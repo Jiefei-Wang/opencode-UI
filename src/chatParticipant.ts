@@ -15,11 +15,22 @@ export function registerChatParticipant(ctx: vscode.ExtensionContext, services: 
       }
 
       stream.progress("Starting OpenCode...")
-      const sent = await services.sendPrompt(prompt)
-      stream.progress(`Using session ${sent.session.id}`)
+      const rt = await services.ensureReady()
+      const session = await services.activeOrNewSession(rt)
+      const eventCts = new vscode.CancellationTokenSource()
+      const cancelSub = token.onCancellationRequested(() => eventCts.cancel())
+      const events = streamSessionEvents(services, rt.workspaceId, session.id, stream, eventCts.token)
+      try {
+        await services.sendPromptToSession(rt, session, prompt)
+        stream.progress(`Using session ${session.id}`)
 
-      await streamSessionEvents(services, sent.rt.workspaceId, sent.session.id, stream, token)
-      return { metadata: { sessionID: sent.session.id } }
+        await events
+      } finally {
+        cancelSub.dispose()
+        eventCts.cancel()
+        eventCts.dispose()
+      }
+      return { metadata: { sessionID: session.id } }
     } catch (err) {
       stream.markdown(`OpenCode error: ${escapeMd(text(err))}`)
       stream.button({ command: "opencode.openOutput", title: "Open Output" })
@@ -119,8 +130,19 @@ async function handleSlashCommand(request: vscode.ChatRequest, stream: vscode.Ch
 async function streamSessionEvents(services: OpenCodeServices, workspaceId: string, sessionID: string, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) {
   let sawText = false
   await new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, 5 * 60 * 1000)
-    const sub = services.onDidEvent(({ workspaceId: eventWorkspace, event }) => {
+    let finished = false
+    let sub: vscode.Disposable | undefined
+    let cancelSub: vscode.Disposable | undefined
+    const finish = () => {
+      if (finished) return
+      finished = true
+      clearTimeout(timeout)
+      sub?.dispose()
+      cancelSub?.dispose()
+      resolve()
+    }
+    const timeout = setTimeout(finish, 5 * 60 * 1000)
+    sub = services.onDidEvent(({ workspaceId: eventWorkspace, event }) => {
       if (eventWorkspace !== workspaceId) return
       const props = event.properties ?? {}
       const eventSession = props.sessionID ?? props.info?.sessionID ?? props.part?.sessionID
@@ -133,9 +155,18 @@ async function streamSessionEvents(services: OpenCodeServices, workspaceId: stri
 
       if (event.type === "message.part.updated") {
         const part = props.part
+        if (typeof props.delta === "string") {
+          sawText = true
+          stream.markdown(props.delta)
+        }
         if (part?.type === "reasoning" && showThinking() && part.text) stream.markdown(`\n> ${part.text}\n`)
         if (part?.type === "text" && part.text && !sawText) stream.markdown(part.text)
         if (part?.type === "tool") stream.progress(toolProgress(part))
+      }
+
+      if (event.type === "session.error") {
+        stream.markdown(`\nOpenCode error: ${escapeMd(text(props.error ?? props))}`)
+        finish()
       }
 
       if (event.type === "permission.asked") {
@@ -145,19 +176,10 @@ async function streamSessionEvents(services: OpenCodeServices, workspaceId: stri
         stream.button({ command: "opencode.permission.reject", title: "Reject", arguments: [workspaceId, props.id] })
       }
 
-      if (event.type === "session.status" && props.status?.type !== "busy") resolve()
+      if (event.type === "session.status" && props.status?.type !== "busy") finish()
+      if (event.type === "session.idle") finish()
     })
-    const cancelSub = token.onCancellationRequested(resolve)
-    void new Promise<void>((done) => setTimeout(done, 0)).then(() => {
-      token.onCancellationRequested(() => undefined)
-    })
-    const originalResolve = resolve
-    resolve = () => {
-      clearTimeout(timeout)
-      sub.dispose()
-      cancelSub.dispose()
-      originalResolve()
-    }
+    cancelSub = token.onCancellationRequested(finish)
   })
 }
 

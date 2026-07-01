@@ -17,6 +17,11 @@ test("client supports direct OpenCode session object responses and sends prompt 
         return
       }
       if (req.method === "POST" && req.url === "/api/session/session-1/prompt") {
+        if (parsed?.delivery !== "queue" && parsed?.delivery !== "steer") {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: "invalid delivery" }))
+          return
+        }
         res.end(JSON.stringify({ ok: true }))
         return
       }
@@ -44,7 +49,56 @@ test("client supports direct OpenCode session object responses and sends prompt 
 
     const prompt = requests.find((request) => request.url === "/api/session/session-1/prompt")
     assert.equal(prompt?.body.prompt.text, "hi")
-    assert.equal(prompt?.body.delivery, "async")
+    assert.equal(prompt?.body.delivery, "queue")
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
+
+test("client parses CRLF-delimited SSE events", async () => {
+  const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url?.startsWith("/api/event")) {
+      res.writeHead(200, { "content-type": "text/event-stream" })
+      res.end('data: {"type":"session.status","properties":{"status":{"type":"idle"}}}\r\n\r\n')
+      return
+    }
+    res.statusCode = 404
+    res.end("not found")
+  })
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const addr = server.address()
+    assert.equal(typeof addr, "object")
+    const client = await createClient(`http://127.0.0.1:${addr!.port}`, "C:\\workspace")
+    const sub = await client.event!.subscribe({ directory: "C:\\workspace" })
+    const events = []
+    for await (const event of sub.stream) events.push(event)
+
+    assert.equal(events.length, 1)
+    assert.equal(events[0].type, "session.status")
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
+
+test("client does not retry mutating fallback endpoints after server errors", async () => {
+  const requests: string[] = []
+  const server = http.createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`)
+    req.resume()
+    res.statusCode = 500
+    res.end("boom")
+  })
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const addr = server.address()
+    assert.equal(typeof addr, "object")
+    const client = await createClient(`http://127.0.0.1:${addr!.port}`, "C:\\workspace")
+
+    await assert.rejects(() => client.session.create({ directory: "C:\\workspace" }), /\/api\/session failed: 500 boom/)
+    assert.deepEqual(requests, ["POST /api/session"])
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }

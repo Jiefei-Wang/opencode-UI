@@ -15,7 +15,7 @@ export async function createClient(url: string, dir: string): Promise<OpenCodeCl
       status: (input) => getFirst(url, ["/api/session/status", "/session/status"], withDirectory(dir, input)),
     },
     app: {
-      agents: (input) => getFirst(url, ["/api/app/agents", "/app/agents"], withDirectory(dir, input)),
+      agents: (input) => getFirst(url, ["/api/agent", "/agent", "/api/app/agents", "/app/agents"], withDirectory(dir, input)),
     },
     command: {
       list: (input) => getFirst(url, ["/api/command", "/command"], withDirectory(dir, input)),
@@ -53,7 +53,7 @@ async function post<T = unknown>(baseUrl: string, path: string, body?: Record<st
   })
 
   if (!res.ok) {
-    throw new Error(`${path} failed: ${res.status} ${await res.text()}`)
+    throw new HttpError(path, res.status, await res.text())
   }
 
   if (res.status === 204) return {}
@@ -66,7 +66,7 @@ async function get<T = unknown>(baseUrl: string, path: string, query?: Record<st
   const res = await fetch(`${baseUrl}${path}${qs}`, { method: "GET" })
 
   if (!res.ok) {
-    throw new Error(`${path} failed: ${res.status} ${await res.text()}`)
+    throw new HttpError(path, res.status, await res.text())
   }
 
   if (res.status === 204) return {}
@@ -96,9 +96,20 @@ async function first<T>(items: string[], run: (item: string) => Promise<T>) {
       return await run(item)
     } catch (err) {
       last = err
+      if (!isFallbackStatus(err)) throw err
     }
   }
   throw last instanceof Error ? last : new Error(String(last))
+}
+
+class HttpError extends Error {
+  constructor(path: string, readonly status: number, body: string) {
+    super(`${path} failed: ${status} ${body}`)
+  }
+}
+
+function isFallbackStatus(err: unknown) {
+  return err instanceof HttpError && (err.status === 404 || err.status === 405)
 }
 
 async function subscribeFirst(baseUrl: string, paths: string[], query?: Record<string, unknown>, options?: { signal?: AbortSignal; onSseError?: (error: unknown) => void }) {
@@ -127,7 +138,7 @@ async function* sse(url: string, options?: { signal?: AbortSignal; onSseError?: 
   })
 
   if (!res.ok || !res.body) {
-    throw new Error(`${url} failed: ${res.status} ${await res.text()}`)
+    throw new HttpError(url, res.status, await res.text())
   }
 
   const reader = res.body.getReader()
@@ -139,10 +150,10 @@ async function* sse(url: string, options?: { signal?: AbortSignal; onSseError?: 
       const chunk = await reader.read()
       if (chunk.done) return
       buffer += decoder.decode(chunk.value, { stream: true })
-      let split = buffer.indexOf("\n\n")
-      while (split >= 0) {
-        const raw = buffer.slice(0, split)
-        buffer = buffer.slice(split + 2)
+      let split = eventBoundary(buffer)
+      while (split) {
+        const raw = buffer.slice(0, split.index)
+        buffer = buffer.slice(split.index + split[0].length)
         const data = raw.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n")
         if (data && data !== "[DONE]") {
           try {
@@ -151,12 +162,16 @@ async function* sse(url: string, options?: { signal?: AbortSignal; onSseError?: 
             options?.onSseError?.(err)
           }
         }
-        split = buffer.indexOf("\n\n")
+        split = eventBoundary(buffer)
       }
     }
   } finally {
     reader.releaseLock()
   }
+}
+
+function eventBoundary(buffer: string): RegExpExecArray | null {
+  return /\r?\n\r?\n/.exec(buffer)
 }
 
 function toQuery(input?: Record<string, unknown>) {
@@ -202,7 +217,7 @@ function toPromptBody(dir: string, input?: Record<string, unknown>) {
   const text = parts.filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n")
   return {
     ...stripped,
-    delivery: "async",
+    delivery: "queue",
     prompt: text ? { text } : undefined,
   }
 }

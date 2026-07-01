@@ -115,6 +115,7 @@ export class WorkspaceManager implements vscode.Disposable {
       this.log(rt, "server ready")
     } catch (err) {
       startup.dispose()
+      await stopServer(proc)
       rt.state = "error"
       rt.client = undefined
       rt.error = text(err)
@@ -138,7 +139,15 @@ export class WorkspaceManager implements vscode.Disposable {
 
   private bind(rt: WorkspaceRuntime) {
     rt.proc?.stdout?.on("data", (buf) => this.log(rt, String(buf).trimEnd()))
-    rt.proc?.stderr?.on("data", (buf) => this.log(rt, String(buf).trimEnd()))
+    rt.proc?.stderr?.on("data", (buf) => {
+      const text = String(buf).trimEnd()
+      this.log(rt, text)
+      const message = runtimeErrorMessage(text)
+      if (message) {
+        rt.error = message
+        this.fire()
+      }
+    })
     rt.proc?.on("exit", (code, signal) => {
       const cur = this.runtimes.get(rt.workspaceId)
       if (!cur || cur.proc !== rt.proc || cur.state === "stopping") return
@@ -193,4 +202,14 @@ function safeJson(value: unknown) {
   } catch {
     return String(value)
   }
+}
+
+function runtimeErrorMessage(value: string) {
+  if (!/\b(ERROR|Error|InvalidRequestError|Provider request failed|Unauthorized|invalid_api_key)\b/.test(value)) return undefined
+  const apiKey = value.match(/Unauthorized: No API key provided[^"\n]*/)?.[0]
+  if (apiKey) return apiKey
+  const provider = value.match(/Provider request failed[^\n]*/)?.[0]
+  if (provider) return provider
+  const first = value.split(/\r?\n/).find((line) => line.trim())?.trim()
+  return first ? first.slice(0, 500) : undefined
 }

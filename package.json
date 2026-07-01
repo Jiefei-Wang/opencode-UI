@@ -36,13 +36,15 @@
   "scripts": {
     "compile": "tsc --noEmit && node esbuild.js",
     "test": "tsc --noEmit && node esbuild.tests.js && node --test .test-dist/*.test.js tests/*.test.js",
+    "test:vscode": "npm run compile && node esbuild.vscode-tests.js && vscode-test --config .vscode-test.js",
     "watch": "node esbuild.js --watch",
     "package": "tsc --noEmit && node esbuild.js --production"
   },
-  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.19.0",
     "@types/vscode": "^1.100.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.8.0"
   },
@@ -55,17 +57,50 @@
         "description": "Ask OpenCode to work in this workspace",
         "isSticky": true,
         "commands": [
-          { "name": "new", "description": "Start a new OpenCode session" },
-          { "name": "resume", "description": "Resume an existing session" },
-          { "name": "sessions", "description": "List recent sessions" },
-          { "name": "agent", "description": "Choose or insert an agent" },
-          { "name": "skill", "description": "Choose or insert a skill" },
-          { "name": "model", "description": "Choose provider and model" },
-          { "name": "todo", "description": "Show current todos" },
-          { "name": "diff", "description": "Show current modified files" },
-          { "name": "abort", "description": "Abort the active OpenCode run" },
-          { "name": "permissions", "description": "Review pending permissions" },
-          { "name": "status", "description": "Show OpenCode server status" }
+          {
+            "name": "new",
+            "description": "Start a new OpenCode session"
+          },
+          {
+            "name": "resume",
+            "description": "Resume an existing session"
+          },
+          {
+            "name": "sessions",
+            "description": "List recent sessions"
+          },
+          {
+            "name": "agent",
+            "description": "Choose or insert an agent"
+          },
+          {
+            "name": "skill",
+            "description": "Choose or insert a skill"
+          },
+          {
+            "name": "model",
+            "description": "Choose provider and model"
+          },
+          {
+            "name": "todo",
+            "description": "Show current todos"
+          },
+          {
+            "name": "diff",
+            "description": "Show current modified files"
+          },
+          {
+            "name": "abort",
+            "description": "Abort the active OpenCode run"
+          },
+          {
+            "name": "permissions",
+            "description": "Review pending permissions"
+          },
+          {
+            "name": "status",
+            "description": "Show OpenCode server status"
+          }
         ]
       }
     ],
@@ -88,25 +123,89 @@
       ]
     },
     "commands": [
-      { "command": "opencode.openChat", "title": "OpenCode: Open Chat", "icon": "$(comment-discussion)" },
-      { "command": "opencode.openPanel", "title": "OpenCode: Open Panel", "icon": "$(hubot)" },
-      { "command": "opencode.newSession", "title": "OpenCode: New Session", "icon": "$(add)" },
-      { "command": "opencode.resumeSession", "title": "OpenCode: Resume Session", "icon": "$(history)" },
-      { "command": "opencode.pickAgent", "title": "OpenCode: Pick Agent", "icon": "$(account)" },
-      { "command": "opencode.pickSkill", "title": "OpenCode: Pick Skill", "icon": "$(sparkle)" },
-      { "command": "opencode.pickModel", "title": "OpenCode: Pick Model", "icon": "$(server-process)" },
-      { "command": "opencode.showTodo", "title": "OpenCode: Show Todo", "icon": "$(checklist)" },
-      { "command": "opencode.showDiff", "title": "OpenCode: Show Diff", "icon": "$(diff)" },
-      { "command": "opencode.abort", "title": "OpenCode: Abort", "icon": "$(debug-stop)" },
-      { "command": "opencode.restartServer", "title": "OpenCode: Restart Server", "icon": "$(debug-restart)" },
-      { "command": "opencode.checkEnvironment", "title": "OpenCode: Check Environment", "icon": "$(debug-alt)" },
-      { "command": "opencode.openOutput", "title": "OpenCode: Open Output", "icon": "$(output)" }
+      {
+        "command": "opencode.openChat",
+        "title": "OpenCode: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "opencode.openPanel",
+        "title": "OpenCode: Open Panel",
+        "icon": "$(hubot)"
+      },
+      {
+        "command": "opencode.newSession",
+        "title": "OpenCode: New Session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "opencode.resumeSession",
+        "title": "OpenCode: Resume Session",
+        "icon": "$(history)"
+      },
+      {
+        "command": "opencode.pickAgent",
+        "title": "OpenCode: Pick Agent",
+        "icon": "$(account)"
+      },
+      {
+        "command": "opencode.pickSkill",
+        "title": "OpenCode: Pick Skill",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "opencode.pickModel",
+        "title": "OpenCode: Pick Model",
+        "icon": "$(server-process)"
+      },
+      {
+        "command": "opencode.showTodo",
+        "title": "OpenCode: Show Todo",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "opencode.showDiff",
+        "title": "OpenCode: Show Diff",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "opencode.abort",
+        "title": "OpenCode: Abort",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "opencode.restartServer",
+        "title": "OpenCode: Restart Server",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "opencode.checkEnvironment",
+        "title": "OpenCode: Check Environment",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "opencode.openOutput",
+        "title": "OpenCode: Open Output",
+        "icon": "$(output)"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "opencode.openChat", "when": "view == opencode.secondaryPanel", "group": "navigation@1" },
-        { "command": "opencode.newSession", "when": "view == opencode.secondaryPanel", "group": "navigation@2" },
-        { "command": "opencode.restartServer", "when": "view == opencode.secondaryPanel", "group": "navigation@3" }
+        {
+          "command": "opencode.openChat",
+          "when": "view == opencode.secondaryPanel",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opencode.newSession",
+          "when": "view == opencode.secondaryPanel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "opencode.restartServer",
+          "when": "view == opencode.secondaryPanel",
+          "group": "navigation@3"
+        }
       ]
     },
     "configuration": {
@@ -120,8 +219,11 @@
         },
         "opencode.autoStart": {
           "type": "string",
-          "default": "onFirstUse",
-          "enum": ["onFirstUse", "onWorkspaceOpen"],
+          "default": "onWorkspaceOpen",
+          "enum": [
+            "onFirstUse",
+            "onWorkspaceOpen"
+          ],
           "scope": "window",
           "description": "When to start the OpenCode server."
         },

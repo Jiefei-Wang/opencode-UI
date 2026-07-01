@@ -13,7 +13,7 @@ export function httpProxy() {
 }
 
 export function autoStart() {
-  return config().get<string>("autoStart") || "onFirstUse"
+  return config().get<string>("autoStart") || "onWorkspaceOpen"
 }
 
 export function defaultAgent() {

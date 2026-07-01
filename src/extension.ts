@@ -37,7 +37,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   await mgr.sync(vscode.workspace.workspaceFolders ?? [])
   if (autoStart() === "onWorkspaceOpen" && vscode.workspace.workspaceFolders?.length) {
-    void services.ensureReady(vscode.workspace.workspaceFolders[0]).catch((err) => out.appendLine(`auto start failed: ${err instanceof Error ? err.message : String(err)}`))
+    for (const folder of vscode.workspace.workspaceFolders) {
+      void services.ensureReady(folder).catch((err) => out.appendLine(`auto start failed (${folder.name}): ${err instanceof Error ? err.message : String(err)}`))
+    }
   }
 }
 

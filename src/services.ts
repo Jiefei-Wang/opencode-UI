@@ -1,6 +1,6 @@
 import * as vscode from "vscode"
 import { defaultAgent, defaultModel } from "./settings"
-import type { AgentInfo, CommandInfo, FileDiff, ModelPick, PermissionReply, PermissionRequest, QuestionRequest, SessionEvent, SessionInfo, SkillInfo, Todo } from "./opencodeTypes"
+import type { AgentInfo, CommandInfo, FileDiff, ModelPick, OpenCodeClient, PermissionReply, PermissionRequest, QuestionRequest, SessionEvent, SessionInfo, SkillInfo, Todo } from "./opencodeTypes"
 import { WorkspaceManager, WorkspaceRuntime } from "./workspaceManager"
 
 export class OpenCodeServices implements vscode.Disposable {
@@ -13,21 +13,25 @@ export class OpenCodeServices implements vscode.Disposable {
   private agents = new Map<string, AgentInfo[]>()
   private skills = new Map<string, SkillInfo[]>()
   private models = new Map<string, ModelPick[]>()
-  private eventAbort = new Map<string, AbortController>()
+  private eventAbort = new Map<string, { ctrl: AbortController; client: OpenCodeClient }>()
   private emitter = new vscode.EventEmitter<void>()
   private eventEmitter = new vscode.EventEmitter<{ workspaceId: string; event: SessionEvent }>()
+  private readonly mgrSub: vscode.Disposable
 
   readonly onDidChange = this.emitter.event
   readonly onDidEvent = this.eventEmitter.event
 
   constructor(private mgr: WorkspaceManager, private context: vscode.ExtensionContext, private out: vscode.OutputChannel) {
-    this.mgr.onDidChange(() => void this.syncEventSubscriptions())
+    this.mgrSub = this.mgr.onDidChange(() => {
+      void this.syncEventSubscriptions()
+      this.fire()
+    })
   }
 
   async ensureReady(folder?: vscode.WorkspaceFolder) {
     this.log(`ensureReady requested folder=${folder?.uri.fsPath ?? "<default>"}`)
     const rt = await this.mgr.ensure(folder)
-    if (rt.state !== "ready" || !rt.client) {
+    if ((rt.state !== "ready" && rt.state !== "busy") || !rt.client) {
       this.log(`ensureReady failed workspace=${rt.name} state=${rt.state} error=${rt.error ?? "<none>"}`)
       throw new Error(rt.error || "OpenCode server is not ready")
     }
@@ -80,6 +84,14 @@ export class OpenCodeServices implements vscode.Disposable {
     return picked.session
   }
 
+  async selectSession(workspaceId: string, sessionID: string) {
+    const rt = this.mgr.get(workspaceId)
+    if (!rt?.client) throw new Error("OpenCode workspace is not ready")
+    this.setActiveSession(workspaceId, sessionID)
+    await Promise.all([this.refreshTodos(rt).catch(() => []), this.refreshDiff(rt).catch(() => [])])
+    this.fire()
+  }
+
   async activeOrNewSession(rt: WorkspaceRuntime) {
     const activeId = this.activeSessions.get(rt.workspaceId) ?? this.context.workspaceState.get<string>(stateKey(rt.workspaceId))
     if (activeId) {
@@ -93,6 +105,11 @@ export class OpenCodeServices implements vscode.Disposable {
     this.log(`sendPrompt requested chars=${prompt.length}`)
     const rt = await this.ensureReady()
     const session = await this.activeOrNewSession(rt)
+    await this.sendPromptToSession(rt, session, prompt, opts)
+    return { rt, session }
+  }
+
+  async sendPromptToSession(rt: WorkspaceRuntime, session: SessionInfo, prompt: string, opts?: { agent?: string; model?: ModelPick }) {
     const agent = opts?.agent ?? (defaultAgent() || undefined)
     const model = opts?.model ?? parseModel(defaultModel())
     this.log(`[${rt.name}] sending prompt session=${session.id} agent=${agent ?? "<default>"} model=${model ? `${model.providerID}/${model.modelID}` : "<default>"}`)
@@ -104,7 +121,6 @@ export class OpenCodeServices implements vscode.Disposable {
       parts: [{ type: "text", text: prompt }],
     })
     this.log(`[${rt.name}] prompt accepted session=${session.id}`)
-    return { rt, session }
   }
 
   async abortActive(rt?: WorkspaceRuntime) {
@@ -124,11 +140,13 @@ export class OpenCodeServices implements vscode.Disposable {
     const list = listRes.data ?? []
     this.sessions.set(rt.workspaceId, list)
     const statuses = statusRes.data ?? {}
+    let busy = false
     for (const session of list) {
       if (statuses[session.id]?.type === "busy") {
-        rt.state = "busy"
+        busy = true
       }
     }
+    rt.state = busy ? "busy" : "ready"
     this.fire()
     return list
   }
@@ -197,12 +215,15 @@ export class OpenCodeServices implements vscode.Disposable {
     const runtime = rt ?? await this.ensureReady()
     const providerRes = await runtime.client?.provider?.list({ directory: runtime.dir }).catch(() => ({ data: undefined }))
     const configRes = await runtime.client?.config?.providers({ directory: runtime.dir }).catch(() => ({ data: undefined }))
-    const providers = providerRes?.data?.all ?? providerRes?.data?.providers ?? configRes?.data?.providers ?? []
-    const models = providers.flatMap((provider) => Object.values(provider.models ?? {}).map((model) => ({
+    const providerData = providerRes?.data
+    const providers = Array.isArray(providerData) ? providerData : providerData?.all ?? providerData?.providers ?? configRes?.data?.providers ?? []
+    const models = providers.flatMap((provider) => Object.entries(provider.models ?? {}).map(([key, value]) => {
+      const model = value as { id?: string; name?: string }
+      return {
       providerID: provider.id,
-      modelID: model.id,
-      label: `${provider.name ?? provider.id}: ${model.name ?? model.id}`,
-    })))
+      modelID: model.id ?? key,
+      label: `${provider.name ?? provider.id}: ${model.name ?? model.id ?? key}`,
+    }}))
     this.models.set(runtime.workspaceId, models)
     this.fire()
     return models
@@ -250,7 +271,8 @@ export class OpenCodeServices implements vscode.Disposable {
   }
 
   dispose() {
-    for (const ctrl of this.eventAbort.values()) ctrl.abort()
+    for (const entry of this.eventAbort.values()) entry.ctrl.abort()
+    this.mgrSub.dispose()
     this.emitter.dispose()
     this.eventEmitter.dispose()
   }
@@ -277,10 +299,25 @@ export class OpenCodeServices implements vscode.Disposable {
   }
 
   private async syncEventSubscriptions() {
+    const currentIds = new Set(this.mgr.list().map((rt) => rt.workspaceId))
+    for (const [workspaceId, existing] of this.eventAbort) {
+      if (currentIds.has(workspaceId)) continue
+      existing.ctrl.abort()
+      this.eventAbort.delete(workspaceId)
+    }
+
     for (const rt of this.mgr.list()) {
-      if (rt.state !== "ready" || !rt.client?.event || this.eventAbort.has(rt.workspaceId)) continue
+      const existing = this.eventAbort.get(rt.workspaceId)
+      if ((rt.state !== "ready" && rt.state !== "busy") || !rt.client?.event) {
+        existing?.ctrl.abort()
+        this.eventAbort.delete(rt.workspaceId)
+        continue
+      }
+      if (existing?.client === rt.client) continue
+      existing?.ctrl.abort()
+      this.eventAbort.delete(rt.workspaceId)
       const ctrl = new AbortController()
-      this.eventAbort.set(rt.workspaceId, ctrl)
+      this.eventAbort.set(rt.workspaceId, { ctrl, client: rt.client })
       void this.consumeEvents(rt, ctrl)
     }
   }
@@ -295,17 +332,22 @@ export class OpenCodeServices implements vscode.Disposable {
     } catch (err) {
       if (!ctrl.signal.aborted) this.out.appendLine(`[${rt.name}] event stream stopped: ${text(err)}`)
     } finally {
-      if (this.eventAbort.get(rt.workspaceId) === ctrl) this.eventAbort.delete(rt.workspaceId)
+      if (this.eventAbort.get(rt.workspaceId)?.ctrl === ctrl) {
+        this.eventAbort.delete(rt.workspaceId)
+      }
     }
   }
 
   private handleEvent(rt: WorkspaceRuntime, event: SessionEvent) {
     if (event.type === "todo.updated") this.todos.set(rt.workspaceId, event.properties?.todos ?? [])
     if (event.type === "session.diff") this.diffs.set(rt.workspaceId, event.properties?.diff ?? [])
-    if (event.type === "permission.asked") this.permissions.set(rt.workspaceId, [...(this.permissions.get(rt.workspaceId) ?? []), event.properties])
+    if (event.type === "permission.asked" || event.type === "permission.updated") this.permissions.set(rt.workspaceId, [...(this.permissions.get(rt.workspaceId) ?? []), normalizePermission(event.properties)])
+    if (event.type === "permission.replied") this.permissions.set(rt.workspaceId, (this.permissions.get(rt.workspaceId) ?? []).filter((permission) => permission.id !== event.properties?.id))
     if (event.type === "question.asked") this.questions.set(rt.workspaceId, [...(this.questions.get(rt.workspaceId) ?? []), event.properties])
     if (event.type === "session.created" || event.type === "session.updated" || event.type === "session.deleted") void this.refreshSessions(rt)
     if (event.type === "session.status") rt.state = event.properties?.status?.type === "busy" ? "busy" : "ready"
+    if (event.type === "session.idle") rt.state = "ready"
+    if (event.type === "session.error") rt.error = text(event.properties?.error ?? event.properties ?? "OpenCode session failed")
     this.eventEmitter.fire({ workspaceId: rt.workspaceId, event })
     this.fire()
   }
@@ -321,7 +363,6 @@ export class OpenCodeServices implements vscode.Disposable {
 
 function normalizeSkills(commands: CommandInfo[]): SkillInfo[] {
   return commands
-    .filter((cmd) => cmd.source === "skill" || cmd.name.toLowerCase().includes("skill"))
     .map((cmd) => ({
       id: cmd.name,
       name: cmd.name,
@@ -330,6 +371,16 @@ function normalizeSkills(commands: CommandInfo[]): SkillInfo[] {
       triggerText: `/${cmd.name} `,
       hints: cmd.hints ?? [],
     }))
+}
+
+function normalizePermission(value: any): PermissionRequest {
+  return {
+    id: String(value?.id ?? value?.requestID ?? ""),
+    sessionID: String(value?.sessionID ?? ""),
+    permission: String(value?.permission ?? value?.title ?? value?.type ?? "Permission requested"),
+    patterns: value?.patterns,
+    metadata: value?.metadata,
+  }
 }
 
 function parseModel(value: string): ModelPick | undefined {

@@ -1,0 +1,8 @@
+.vscode/**
+.opencode/**
+docs/**
+src/**
+*.ts
+tsconfig.json
+esbuild.js
+node_modules/.cache/**

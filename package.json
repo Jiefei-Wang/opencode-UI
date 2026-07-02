@@ -37,6 +37,7 @@
     "compile": "tsc --noEmit && node esbuild.js",
     "test": "tsc --noEmit && node esbuild.tests.js && node --test .test-dist/*.test.js tests/*.test.js",
     "test:vscode": "npm run compile && node esbuild.vscode-tests.js && vscode-test --config .vscode-test.js",
+    "smoke:opencode": "node scripts/smoke-opencode-api.js",
     "watch": "node esbuild.js --watch",
     "package": "tsc --noEmit && node esbuild.js --production"
   },

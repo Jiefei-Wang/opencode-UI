@@ -57,6 +57,13 @@ test("panel renders session history and streams opencode events", () => {
   assert.match(source, /message\.part\.updated/)
 })
 
+test("panel keeps composer usable in narrow panes and surfaces runtime errors", () => {
+  assert.match(source, /grid-template-columns: minmax\(0, 1fr\) auto/)
+  assert.match(source, /\.composer-wrap \{ min-width: 0;/)
+  assert.match(source, /surfaceWorkspaceError/)
+  assert.match(source, /appendNotice\(ws\.error, 'error'\)/)
+})
+
 test("panel preserves draft text and requests initial state after listeners are ready", () => {
   assert.match(source, /let draft = persisted\.draft/)
   assert.match(source, /event\.target\?\.id === 'prompt'/)

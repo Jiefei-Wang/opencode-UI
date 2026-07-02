@@ -21,7 +21,7 @@ export async function createClient(url: string, dir: string): Promise<OpenCodeCl
       list: (input) => getFirst(url, ["/api/command", "/command"], withDirectory(dir, input)),
     },
     provider: {
-      list: (input) => getFirst(url, ["/api/provider", "/provider"], withDirectory(dir, input)),
+      list: (input) => getFirst(url, ["/provider", "/api/provider"], withDirectory(dir, input)),
     },
     config: {
       providers: (input) => getFirst(url, ["/api/config/providers", "/config/providers"], withDirectory(dir, input)),

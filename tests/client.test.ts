@@ -103,3 +103,35 @@ test("client does not retry mutating fallback endpoints after server errors", as
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
 })
+
+test("client prefers the full provider catalog endpoint for models", async () => {
+  const requests: string[] = []
+  const server = http.createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`)
+    req.resume()
+    res.setHeader("content-type", "application/json")
+    if (req.method === "GET" && req.url?.startsWith("/provider")) {
+      res.end(JSON.stringify({ all: [{ id: "provider-a", name: "Provider A", models: { "model-a": { id: "model-a", name: "Model A" } } }] }))
+      return
+    }
+    if (req.method === "GET" && req.url?.startsWith("/api/provider")) {
+      res.end(JSON.stringify({ data: [{ id: "configured-only", name: "Configured Only" }] }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ error: "not found" }))
+  })
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const addr = server.address()
+    assert.equal(typeof addr, "object")
+    const client = await createClient(`http://127.0.0.1:${addr!.port}`, "C:\\workspace")
+
+    const result = await client.provider!.list({ directory: "C:\\workspace" })
+    assert.equal(result.data?.all?.[0]?.models?.["model-a"]?.id, "model-a")
+    assert.equal(requests[0].startsWith("GET /provider"), true)
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})

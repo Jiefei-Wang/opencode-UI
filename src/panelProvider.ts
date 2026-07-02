@@ -130,7 +130,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     button.primary { min-width: 52px; padding: 4px 10px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
     button.primary:hover { background: var(--vscode-button-hoverBackground); }
     button.subtle { padding: 3px 7px; color: var(--vscode-descriptionForeground); }
-    textarea { width: 100%; min-height: 62px; max-height: 170px; padding: 9px 10px 2px; border: 0; outline: 0; resize: vertical; color: var(--vscode-input-foreground); background: transparent; line-height: 1.45; }
+    textarea { display: block; width: 100%; min-width: 0; min-height: 62px; max-height: 170px; padding: 9px 10px 2px; border: 0; outline: 0; resize: vertical; color: var(--vscode-input-foreground); background: transparent; line-height: 1.45; }
     .shell { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
     .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
     .workspace { min-width: 0; }
@@ -161,13 +161,14 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     .menu .meta { display: block; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .selection { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
     .chip { padding: 3px 7px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; color: var(--vscode-descriptionForeground); background: var(--vscode-badge-background); }
-    .composer-wrap { padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border); }
-    .composer { border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 10px; background: var(--vscode-input-background); overflow: visible; }
+    .composer-wrap { min-width: 0; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border); overflow: hidden; }
+    .composer { min-width: 0; max-width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 10px; background: var(--vscode-input-background); overflow: visible; }
     .composer:focus-within { border-color: var(--vscode-focusBorder); }
-    .composer-actions { display: flex; align-items: center; gap: 6px; padding: 6px; flex-wrap: wrap; min-width: 0; }
-    .pickers { display: flex; gap: 4px; flex-wrap: wrap; min-width: 0; flex: 1 1 120px; }
-    .send { display: flex; gap: 4px; flex: 0 0 auto; margin-left: auto; }
-    .hint { width: 100%; color: var(--vscode-descriptionForeground); font-size: 11px; }
+    .composer-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; min-width: 0; }
+    .pickers { display: flex; gap: 4px; flex-wrap: wrap; min-width: 0; }
+    .pickers button { min-width: 0; }
+    .send { display: flex; gap: 4px; min-width: max-content; }
+    .hint { grid-column: 1 / -1; min-width: 0; color: var(--vscode-descriptionForeground); font-size: 11px; }
   </style>
 </head>
 <body>
@@ -187,6 +188,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     window.addEventListener('message', event => {
       if (event.data?.type === 'state') {
         workspaces = event.data.workspaces || [];
+        surfaceWorkspaceError();
         save();
         render();
       }
@@ -215,6 +217,15 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (ws.state === 'ready') return 'Ready';
       if (ws.state === 'busy') return 'Working';
       return ws.state || 'Ready';
+    }
+    function surfaceWorkspaceError() {
+      const ws = workspaces[0];
+      if (!ws?.error) return;
+      const msg = lastAssistant();
+      if (msg?.text === ws.error) return;
+      if (msg?.kind === 'pending' || messages.some(item => item.role === 'user')) {
+        appendNotice(ws.error, 'error');
+      }
     }
     function render() {
       const app = document.getElementById('app');

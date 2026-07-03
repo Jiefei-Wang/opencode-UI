@@ -158,6 +158,11 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     .bubble { max-width: 92%; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); white-space: pre-wrap; overflow-wrap: anywhere; }
     .user .bubble { background: var(--vscode-input-background); background: color-mix(in srgb, var(--vscode-button-background) 14%, var(--vscode-editor-background)); }
     .assistant .bubble { border-top-left-radius: 3px; }
+    .thinking { max-width: 92%; margin: 0 0 6px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; color: var(--vscode-descriptionForeground); background: color-mix(in srgb, var(--vscode-editor-background) 82%, var(--vscode-sideBar-background)); }
+    .thinking summary { padding: 7px 9px; cursor: pointer; font-size: 12px; }
+    .thinking-preview { max-width: 92%; margin: -2px 0 6px; padding: 0 9px 7px; color: var(--vscode-descriptionForeground); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .thinking[open] + .thinking-preview { display: none; }
+    .thinking-body { padding: 0 9px 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .notice { color: var(--vscode-descriptionForeground); font-size: 12px; }
     .notice.error { color: var(--vscode-errorForeground); }
     .detail-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
@@ -212,6 +217,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     let sessionActionsOpen = persisted.sessionActionsOpen || false;
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
+    const messageRoles = new Map();
 
     window.addEventListener('message', event => {
       if (event.data?.type === 'state') {
@@ -325,7 +331,18 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       return session?.title || ws.activeSessionId;
     }
     function renderMessages() {
-      return messages.map(msg => '<div class="message ' + esc(msg.role) + '"><div class="bubble ' + (msg.kind === 'error' ? 'notice error' : '') + '">' + esc(msg.text) + '</div></div>').join('');
+      return messages.map(msg => '<div class="message ' + esc(msg.role) + '">' + renderThinking(msg) + renderBubble(msg) + '</div>').join('');
+    }
+    function renderBubble(msg) {
+      if (!msg.text && msg.thinking && msg.kind === 'pending') return '';
+      return '<div class="bubble ' + (msg.kind === 'error' ? 'notice error' : '') + '">' + esc(msg.text) + '</div>';
+    }
+    function renderThinking(msg) {
+      if (!msg.thinking) return '';
+      return '<details class="thinking"><summary>Thinking</summary><div class="thinking-body">' + esc(msg.thinking) + '</div></details><div class="thinking-preview">' + esc(lastThinkingLines(msg.thinking)) + '</div>';
+    }
+    function lastThinkingLines(text) {
+      return String(text || '').split(/\\r?\\n/).filter(Boolean).slice(-3).join('\\n');
     }
     function renderPermissions(ws) {
       const permissions = ws?.permissions || [];
@@ -393,13 +410,19 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (ws?.workspaceId !== workspaceId) return;
       if (ws?.activeSessionId && sessionID && sessionID !== ws.activeSessionId) return;
 
+      if (event.type === 'message.updated' && props.info?.id && props.info?.role) {
+        messageRoles.set(props.info.id, props.info.role);
+      }
+
       if (event.type === 'message.part.delta' && typeof props.delta === 'string') {
         if (!isAssistantMessageEvent(props)) return;
         appendAssistant(props.delta);
       }
       if (event.type === 'message.part.updated') {
         if (!isAssistantMessageEvent(props)) return;
-        if (typeof props.delta === 'string') appendAssistant(props.delta);
+        if (part.type === 'reasoning' && typeof props.delta === 'string') appendThinking(props.delta);
+        else if (typeof props.delta === 'string') appendAssistant(props.delta);
+        if (part.type === 'reasoning' && part.text) setThinking(part.text);
         else if (part.type === 'text' && part.text) setAssistant(part.text);
         if (part.type === 'tool') appendNotice((part.state?.title || part.tool || 'tool') + ': ' + (part.state?.status || 'running'));
       }
@@ -413,10 +436,20 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (msg) { msg.text += text; msg.kind = undefined; }
       else messages.push({ role: 'assistant', text });
     }
+    function appendThinking(text) {
+      const msg = lastAssistant();
+      if (msg) { msg.thinking = (msg.thinking || '') + text; }
+      else messages.push({ role: 'assistant', text: '', thinking: text });
+    }
     function setAssistant(text) {
       const msg = lastAssistant();
       if (msg && (!msg.text || text.startsWith(msg.text))) { msg.text = text; msg.kind = undefined; }
       else if (!msg) messages.push({ role: 'assistant', text });
+    }
+    function setThinking(text) {
+      const msg = lastAssistant();
+      if (msg) { msg.thinking = text; }
+      else messages.push({ role: 'assistant', text: '', thinking: text });
     }
     function appendNotice(text, kind = 'sent') {
       const msg = lastAssistant();
@@ -432,7 +465,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       return undefined;
     }
     function isAssistantMessageEvent(props) {
-      return props.info?.role === 'assistant' || props.info?.role === undefined;
+      const part = props.part || {};
+      const messageID = props.messageID || part.messageID;
+      return Boolean(messageID && messageRoles.get(messageID) === 'assistant');
     }
     function insert(text) {
       const el = document.getElementById('prompt');

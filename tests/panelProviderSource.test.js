@@ -104,9 +104,28 @@ test("panel closes and persists session history when a session is selected", () 
 })
 
 test("panel ignores user-role message part events so sent prompts are not duplicated as assistant text", () => {
-  assert.match(source, /function isAssistantMessageEvent\(props\)/)
-  assert.match(source, /if \(!isAssistantMessageEvent\(props\)\) return;/)
-  assert.match(source, /props\.info\?\.role === 'assistant'/)
+  assert.match(source, /const messageRoles = new Map\(\);/)
+  assert.match(source, /event\.type === 'message\.updated'/)
+  assert.match(source, /messageRoles\.set\(props\.info\.id, props\.info\.role\)/)
+  assert.match(source, /messageID = props\.messageID \|\| part\.messageID/)
+  assert.match(source, /messageID && messageRoles\.get\(messageID\) === 'assistant'/)
+  assert.doesNotMatch(source, /props\.info\?\.role === 'assistant' \|\| props\.info\?\.role === undefined/)
+})
+
+test("panel renders thinking separately in a collapsed expandable disclosure", () => {
+  assert.match(source, /\.thinking \{ max-width:/)
+  assert.match(source, /function renderThinking\(msg\)/)
+  assert.match(source, /<details class="thinking">/)
+  assert.match(source, /<summary>Thinking<\/summary>/)
+  assert.doesNotMatch(source, /<details class="thinking" open>/)
+  assert.match(source, /function appendThinking\(text\)/)
+  assert.match(source, /part\.type === 'reasoning'/)
+})
+
+test("panel escapes thinking preview line splitting for the embedded webview script", () => {
+  assert.match(source, /split\(\/\\\\r\?\\\\n\/\)/)
+  assert.match(source, /join\('\\\\n'\)/)
+  assert.doesNotMatch(source, /split\(\/\\r\?\\n\/\)\.filter\(Boolean\)\.slice\(-3\)\.join\('\\n'\)/)
 })
 
 test("panel keeps composer usable in narrow panes and surfaces runtime errors", () => {

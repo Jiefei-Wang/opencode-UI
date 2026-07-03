@@ -129,6 +129,7 @@ async function handleSlashCommand(request: vscode.ChatRequest, stream: vscode.Ch
 
 async function streamSessionEvents(services: OpenCodeServices, workspaceId: string, sessionID: string, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) {
   let sawText = false
+  const messageRoles = new Map<string, "user" | "assistant">()
   await new Promise<void>((resolve) => {
     let finished = false
     let sub: vscode.Disposable | undefined
@@ -148,20 +149,26 @@ async function streamSessionEvents(services: OpenCodeServices, workspaceId: stri
       const eventSession = props.sessionID ?? props.info?.sessionID ?? props.part?.sessionID
       if (eventSession && eventSession !== sessionID) return
 
+      if (event.type === "message.updated" && props.info?.id && props.info?.role) {
+        messageRoles.set(props.info.id, props.info.role)
+      }
+
       if (event.type === "message.part.delta" && typeof props.delta === "string") {
-        if (!isAssistantMessageEvent(props)) return
+        if (!isAssistantMessageEvent(messageRoles, props)) return
         sawText = true
         stream.markdown(props.delta)
       }
 
       if (event.type === "message.part.updated") {
-        if (!isAssistantMessageEvent(props)) return
+        if (!isAssistantMessageEvent(messageRoles, props)) return
         const part = props.part
-        if (typeof props.delta === "string") {
+        if (part?.type === "reasoning" && showThinking() && typeof props.delta === "string") {
+          stream.markdown(`\n<details><summary>Thinking</summary>\n\n${props.delta}\n\n</details>\n`)
+        } else if (typeof props.delta === "string") {
           sawText = true
           stream.markdown(props.delta)
         }
-        if (part?.type === "reasoning" && showThinking() && part.text) stream.markdown(`\n> ${part.text}\n`)
+        if (part?.type === "reasoning" && showThinking() && part.text) stream.markdown(`\n<details><summary>Thinking</summary>\n\n${part.text}\n\n</details>\n`)
         if (part?.type === "text" && part.text && !sawText) stream.markdown(part.text)
         if (part?.type === "tool") stream.progress(toolProgress(part))
       }
@@ -191,8 +198,9 @@ function toolProgress(part: any) {
   return `${title}: ${status}`
 }
 
-function isAssistantMessageEvent(props: any) {
-  return props.info?.role === "assistant" || props.info?.role === undefined
+function isAssistantMessageEvent(messageRoles: Map<string, "user" | "assistant">, props: any) {
+  const messageID = props.messageID ?? props.part?.messageID
+  return Boolean(messageID && messageRoles.get(messageID) === "assistant")
 }
 
 function escapeMd(value: string) {

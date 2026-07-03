@@ -38,7 +38,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, mgr: WorkspaceMan
 
   reg("opencode.pickModel", async () => {
     const model = await services.pickModel()
-    if (model) vscode.window.showInformationMessage(`Selected model: ${model.providerID}/${model.modelID}`)
+    vscode.window.showInformationMessage(model ? `Selected model: ${model.providerID}/${model.modelID}` : "Using OpenCode default model.")
   })
 
   reg("opencode.showTodo", async () => {

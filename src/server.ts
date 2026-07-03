@@ -20,7 +20,7 @@ export async function freePort() {
 
 export function spawnServer(dir: string, port: number) {
   const resolved = resolveExecutable({ configuredPath: executablePath() })
-  const env: NodeJS.ProcessEnv = { ...resolved.env, OPENCODE_CALLER: "vscode" }
+  const env: NodeJS.ProcessEnv = { ...resolved.env, OPENCODE_CALLER: "opencode" }
   const proxy = httpProxy()
   if (proxy) {
     env.HTTP_PROXY = proxy

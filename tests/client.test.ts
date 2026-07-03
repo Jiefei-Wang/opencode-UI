@@ -97,8 +97,8 @@ test("client does not retry mutating fallback endpoints after server errors", as
     assert.equal(typeof addr, "object")
     const client = await createClient(`http://127.0.0.1:${addr!.port}`, "C:\\workspace")
 
-    await assert.rejects(() => client.session.create({ directory: "C:\\workspace" }), /\/api\/session failed: 500 boom/)
-    assert.deepEqual(requests, ["POST /api/session"])
+    await assert.rejects(() => client.session.create({ directory: "C:\\workspace" }), /\/session failed: 500 boom/)
+    assert.deepEqual(requests, ["POST /session"])
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }

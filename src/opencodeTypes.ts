@@ -132,6 +132,8 @@ export type ModelPick = {
   providerID: string
   modelID: string
   label: string
+  name?: string
+  providerName?: string
 }
 
 export type OpenCodeClient = {

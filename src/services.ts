@@ -1,4 +1,5 @@
 import * as vscode from "vscode"
+import { connectedProvidersFromConfig, modelsFromConnectedProviders } from "./modelCatalog"
 import { defaultAgent, defaultModel } from "./settings"
 import type { AgentInfo, CommandInfo, FileDiff, ModelPick, OpenCodeClient, PermissionReply, PermissionRequest, QuestionRequest, SessionEvent, SessionInfo, SkillInfo, Todo } from "./opencodeTypes"
 import { WorkspaceManager, WorkspaceRuntime } from "./workspaceManager"
@@ -13,6 +14,7 @@ export class OpenCodeServices implements vscode.Disposable {
   private agents = new Map<string, AgentInfo[]>()
   private skills = new Map<string, SkillInfo[]>()
   private models = new Map<string, ModelPick[]>()
+  private selectedModel?: ModelPick
   private eventAbort = new Map<string, { ctrl: AbortController; client: OpenCodeClient }>()
   private emitter = new vscode.EventEmitter<void>()
   private eventEmitter = new vscode.EventEmitter<{ workspaceId: string; event: SessionEvent }>()
@@ -57,6 +59,8 @@ export class OpenCodeServices implements vscode.Disposable {
       agents: this.agents.get(rt.workspaceId) ?? [],
       skills: this.skills.get(rt.workspaceId) ?? [],
       models: this.models.get(rt.workspaceId) ?? [],
+      selectedModel: this.selectedModel,
+      recentModels: this.recentModelsFor(this.models.get(rt.workspaceId) ?? []),
     }))
   }
 
@@ -111,8 +115,8 @@ export class OpenCodeServices implements vscode.Disposable {
 
   async sendPromptToSession(rt: WorkspaceRuntime, session: SessionInfo, prompt: string, opts?: { agent?: string; model?: ModelPick }) {
     const agent = opts?.agent ?? (defaultAgent() || undefined)
-    const model = opts?.model ?? parseModel(defaultModel())
-    this.log(`[${rt.name}] sending prompt session=${session.id} agent=${agent ?? "<default>"} model=${model ? `${model.providerID}/${model.modelID}` : "<default>"}`)
+    const model = opts?.model ?? this.selectedModel ?? parseModel(defaultModel())
+    this.log(`[${rt.name}] sending prompt session=${session.id} agent=${agent ?? "<default>"} model=${model ? `${model.providerID}/${model.modelID}` : "<opencode-default>"}`)
     await rt.client!.session.promptAsync({
       sessionID: session.id,
       directory: rt.dir,
@@ -213,18 +217,12 @@ export class OpenCodeServices implements vscode.Disposable {
 
   async listModels(rt?: WorkspaceRuntime) {
     const runtime = rt ?? await this.ensureReady()
-    const providerRes = await runtime.client?.provider?.list({ directory: runtime.dir }).catch(() => ({ data: undefined }))
     const configRes = await runtime.client?.config?.providers({ directory: runtime.dir }).catch(() => ({ data: undefined }))
-    const providerData = providerRes?.data
-    const providers = Array.isArray(providerData) ? providerData : providerData?.all ?? providerData?.providers ?? configRes?.data?.providers ?? []
-    const models = providers.flatMap((provider) => Object.entries(provider.models ?? {}).map(([key, value]) => {
-      const model = value as { id?: string; name?: string }
-      return {
-      providerID: provider.id,
-      modelID: model.id ?? key,
-      label: `${provider.name ?? provider.id}: ${model.name ?? model.id ?? key}`,
-    }}))
+    const providers = connectedProvidersFromConfig(configRes?.data)
+    const models = modelsFromConnectedProviders(providers)
+    this.log(`[${runtime.name}] loaded connected models providers=${providers.map((provider) => provider.id).join(",") || "<none>"} count=${models.length}`)
     this.models.set(runtime.workspaceId, models)
+    this.restoreSelectedModel(models)
     this.fire()
     return models
   }
@@ -232,8 +230,27 @@ export class OpenCodeServices implements vscode.Disposable {
   async pickModel() {
     const rt = await this.ensureReady()
     const models = await this.listModels(rt)
-    const picked = await vscode.window.showQuickPick(models.map((m) => ({ label: m.label, description: `${m.providerID}/${m.modelID}`, model: m })), { placeHolder: "Pick OpenCode model" })
-    return picked?.model
+    const picked = await vscode.window.showQuickPick(
+      [
+        ...models.map((m) => ({ label: m.label, description: `${m.providerID}/${m.modelID}`, model: m })),
+      ],
+      { placeHolder: "Pick OpenCode model" },
+    )
+    if (!picked) return this.selectedModel
+    this.selectedModel = picked.model
+    await this.context.globalState.update(modelStateKey(), this.selectedModel ? `${this.selectedModel.providerID}/${this.selectedModel.modelID}` : undefined)
+    await this.recordRecentModel(this.selectedModel)
+    this.log(`[${rt.name}] selected model=${this.selectedModel ? `${this.selectedModel.providerID}/${this.selectedModel.modelID}` : "<opencode-default>"}`)
+    this.fire()
+    return this.selectedModel
+  }
+
+  async setSelectedModel(model?: ModelPick) {
+    this.selectedModel = model
+    await this.context.globalState.update(modelStateKey(), model ? `${model.providerID}/${model.modelID}` : undefined)
+    await this.recordRecentModel(model)
+    this.log(`selected model=${model ? `${model.providerID}/${model.modelID}` : "<opencode-default>"}`)
+    this.fire()
   }
 
   async replyPermission(workspaceId: string, requestID: string, reply: PermissionReply) {
@@ -359,6 +376,32 @@ export class OpenCodeServices implements vscode.Disposable {
   private log(message: string) {
     this.out.appendLine(`[services] ${message}`)
   }
+
+  private restoreSelectedModel(models: ModelPick[]) {
+    if (this.selectedModel) return
+    const stored = this.context.globalState.get<string>(modelStateKey()) || defaultModel()
+    const parsed = parseModel(stored)
+    if (!parsed) return
+    const match = models.find((model) => model.providerID === parsed.providerID && model.modelID === parsed.modelID)
+    if (match) {
+      this.selectedModel = match
+      this.log(`restored selected model=${match.providerID}/${match.modelID}`)
+    } else {
+      this.log(`stored model not available=${stored}; using OpenCode default`)
+    }
+  }
+
+  private recentModelsFor(models: ModelPick[]) {
+    const stored = this.context.globalState.get<string[]>(recentModelStateKey()) ?? []
+    return stored.map((id) => models.find((model) => modelKey(model) === id)).filter((model): model is ModelPick => Boolean(model))
+  }
+
+  private async recordRecentModel(model?: ModelPick) {
+    if (!model) return
+    const key = modelKey(model)
+    const current = this.context.globalState.get<string[]>(recentModelStateKey()) ?? []
+    await this.context.globalState.update(recentModelStateKey(), [key, ...current.filter((item) => item !== key)].slice(0, 8))
+  }
 }
 
 function normalizeSkills(commands: CommandInfo[]): SkillInfo[] {
@@ -391,6 +434,18 @@ function parseModel(value: string): ModelPick | undefined {
 
 function stateKey(workspaceId: string) {
   return `opencode.activeSession.${workspaceId}`
+}
+
+function modelStateKey() {
+  return "opencode.model"
+}
+
+function recentModelStateKey() {
+  return "opencode.recentModels"
+}
+
+function modelKey(model: ModelPick) {
+  return `${model.providerID}/${model.modelID}`
 }
 
 function sessionTitle(session: SessionInfo) {

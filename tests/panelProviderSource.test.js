@@ -33,6 +33,9 @@ test("panel removes command chips and details controls", () => {
 
 test("panel renders model agent and skill menus inline", () => {
   assert.match(source, /data-menu="model"/)
+  assert.doesNotMatch(source, /Use OpenCode default/)
+  assert.match(source, /Recent models/)
+  assert.match(source, /byProvider/)
   assert.match(source, /data-menu="agent"/)
   assert.match(source, /data-menu="skill"/)
   assert.match(source, /renderModelMenu/)
@@ -43,8 +46,11 @@ test("panel renders model agent and skill menus inline", () => {
 
 test("panel sends selected model and agent with prompts", () => {
   assert.match(source, /selectedModel = persisted\.selectedModel/)
+  assert.match(source, /selectedModel = ws\?\.selectedModel \|\| null/)
   assert.match(source, /selectedAgent = persisted\.selectedAgent/)
   assert.match(source, /post\('sendPrompt', \{ prompt, agent: selectedAgent/)
+  assert.match(source, /post\('setModel'/)
+  assert.match(source, /modelButtonLabel/)
   assert.match(source, /function isModelPick/)
 })
 
@@ -59,6 +65,9 @@ test("panel renders session history and streams opencode events", () => {
 
 test("panel keeps composer usable in narrow panes and surfaces runtime errors", () => {
   assert.match(source, /grid-template-columns: minmax\(0, 1fr\) auto/)
+  assert.match(source, /@media \(max-width: 360px\)/)
+  assert.match(source, /@media \(min-width: 520px\)/)
+  assert.match(source, /\.composer-row \.send \{ display: none; \}/)
   assert.match(source, /\.composer-wrap \{ min-width: 0;/)
   assert.match(source, /surfaceWorkspaceError/)
   assert.match(source, /appendNotice\(ws\.error, 'error'\)/)

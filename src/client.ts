@@ -3,40 +3,40 @@ import type { OpenCodeClient } from "./opencodeTypes"
 export async function createClient(url: string, dir: string): Promise<OpenCodeClient> {
   return {
     session: {
-      list: (input) => getFirst(url, ["/api/session", "/session"], withDirectory(dir, input)),
-      create: (input) => postFirst(url, ["/api/session", "/session"], toCreateBody(dir, input)),
-      delete: (input) => postFirst(url, [`/api/session/${sessionID(input)}/delete`, `/session/${sessionID(input)}/delete`], stripSession(withDirectory(dir, input))),
-      messages: (input) => getFirst(url, [`/api/session/${sessionID(input)}/message`, `/session/${sessionID(input)}/message`], stripSession(withDirectory(dir, input))),
-      promptAsync: (input) => postFirst(url, [`/api/session/${sessionID(input)}/prompt`, `/session/${sessionID(input)}/prompt_async`], toPromptBody(dir, input)),
-      command: (input) => postFirst(url, [`/api/session/${sessionID(input)}/command`, `/session/${sessionID(input)}/command`], stripSession(withDirectory(dir, input))),
-      abort: (input) => postFirst(url, [`/api/session/${sessionID(input)}/abort`, `/session/${sessionID(input)}/abort`], stripSession(withDirectory(dir, input))),
-      todo: (input) => getFirst(url, [`/api/session/${sessionID(input)}/todo`, `/session/${sessionID(input)}/todo`], stripSession(withDirectory(dir, input))),
-      diff: (input) => getFirst(url, [`/api/session/${sessionID(input)}/diff`, `/session/${sessionID(input)}/diff`], stripSession(withDirectory(dir, input))),
-      status: (input) => getFirst(url, ["/api/session/status", "/session/status"], withDirectory(dir, input)),
+      list: (input) => getFirst(url, ["/session", "/api/session"], withDirectory(dir, input)),
+      create: (input) => postFirst(url, ["/session", "/api/session"], toCreateBody(dir, input)),
+      delete: (input) => deleteFirst(url, [`/session/${sessionID(input)}`, `/api/session/${sessionID(input)}`], stripSession(withDirectory(dir, input))),
+      messages: (input) => getFirst(url, [`/session/${sessionID(input)}/message`, `/api/session/${sessionID(input)}/message`], stripSession(withDirectory(dir, input))),
+      promptAsync: (input) => postFirst(url, [`/session/${sessionID(input)}/prompt_async`, `/api/session/${sessionID(input)}/prompt`], toPromptBody(dir, input)),
+      command: (input) => postFirst(url, [`/session/${sessionID(input)}/command`, `/api/session/${sessionID(input)}/command`], stripSession(withDirectory(dir, input))),
+      abort: (input) => postFirst(url, [`/session/${sessionID(input)}/abort`, `/api/session/${sessionID(input)}/abort`], stripSession(withDirectory(dir, input))),
+      todo: (input) => getFirst(url, [`/session/${sessionID(input)}/todo`, `/api/session/${sessionID(input)}/todo`], stripSession(withDirectory(dir, input))),
+      diff: (input) => getFirst(url, [`/session/${sessionID(input)}/diff`, `/api/session/${sessionID(input)}/diff`], stripSession(withDirectory(dir, input))),
+      status: (input) => getFirst(url, ["/session/status", "/api/session/status"], withDirectory(dir, input)),
     },
     app: {
-      agents: (input) => getFirst(url, ["/api/agent", "/agent", "/api/app/agents", "/app/agents"], withDirectory(dir, input)),
+      agents: (input) => getFirst(url, ["/agent", "/api/agent", "/app/agents", "/api/app/agents"], withDirectory(dir, input)),
     },
     command: {
-      list: (input) => getFirst(url, ["/api/command", "/command"], withDirectory(dir, input)),
+      list: (input) => getFirst(url, ["/command", "/api/command"], withDirectory(dir, input)),
     },
     provider: {
       list: (input) => getFirst(url, ["/provider", "/api/provider"], withDirectory(dir, input)),
     },
     config: {
-      providers: (input) => getFirst(url, ["/api/config/providers", "/config/providers"], withDirectory(dir, input)),
+      providers: (input) => getFirst(url, ["/config/providers", "/api/config/providers"], withDirectory(dir, input)),
     },
     permission: {
-      list: (input) => getFirst(url, ["/api/permission", "/permission"], withDirectory(dir, input)),
-      reply: (input) => postFirst(url, [`/api/permission/${requestID(input)}`, `/permission/${requestID(input)}`], stripRequest(withDirectory(dir, input))),
+      list: (input) => getFirst(url, ["/permission", "/api/permission"], withDirectory(dir, input)),
+      reply: (input) => postFirst(url, [`/permission/${requestID(input)}`, `/api/permission/${requestID(input)}`], stripRequest(withDirectory(dir, input))),
     },
     question: {
-      list: (input) => getFirst(url, ["/api/question", "/question"], withDirectory(dir, input)),
-      reply: (input) => postFirst(url, [`/api/question/${requestID(input)}`, `/question/${requestID(input)}`], stripRequest(withDirectory(dir, input))),
-      reject: (input) => postFirst(url, [`/api/question/${requestID(input)}/reject`, `/question/${requestID(input)}/reject`], stripRequest(withDirectory(dir, input))),
+      list: (input) => getFirst(url, ["/question", "/api/question"], withDirectory(dir, input)),
+      reply: (input) => postFirst(url, [`/question/${requestID(input)}`, `/api/question/${requestID(input)}`], stripRequest(withDirectory(dir, input))),
+      reject: (input) => postFirst(url, [`/question/${requestID(input)}/reject`, `/api/question/${requestID(input)}/reject`], stripRequest(withDirectory(dir, input))),
     },
     event: {
-      subscribe: (input, options) => subscribeFirst(url, ["/api/event", "/event"], withDirectory(dir, input), options),
+      subscribe: (input, options) => subscribeFirst(url, ["/event", "/api/event"], withDirectory(dir, input), options),
     },
   }
 }
@@ -87,6 +87,23 @@ async function getFirst<T = unknown>(baseUrl: string, paths: string[], query?: R
 
 async function postFirst<T = unknown>(baseUrl: string, paths: string[], body?: Record<string, unknown>) {
   return await first(paths, (path) => post<T>(baseUrl, path, body))
+}
+
+async function deleteFirst<T = unknown>(baseUrl: string, paths: string[], query?: Record<string, unknown>) {
+  return await first(paths, (path) => del<T>(baseUrl, path, query))
+}
+
+async function del<T = unknown>(baseUrl: string, path: string, query?: Record<string, unknown>): Promise<{ data?: T }> {
+  const qs = toQuery(query)
+  const res = await fetch(`${baseUrl}${path}${qs}`, { method: "DELETE" })
+
+  if (!res.ok) {
+    throw new HttpError(path, res.status, await res.text())
+  }
+
+  if (res.status === 204) return {}
+  const text = await res.text()
+  return normalizeResponse<T>(text)
 }
 
 async function first<T>(items: string[], run: (item: string) => Promise<T>) {
@@ -208,7 +225,8 @@ function stripRequest(input?: Record<string, unknown>) {
 }
 
 function toCreateBody(dir: string, input?: Record<string, unknown>) {
-  return { location: dir, directory: dir, ...(input ?? {}) }
+  const { directory: _directory, location: _location, ...rest } = input ?? {}
+  return rest
 }
 
 function toPromptBody(dir: string, input?: Record<string, unknown>) {

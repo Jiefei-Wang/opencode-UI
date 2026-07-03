@@ -83,6 +83,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
           if (msg.menu === "model") await this.services.listModels(rt)
           break
         }
+        case "setModel":
+          await this.services.setSelectedModel(isModelPick(msg.model) ? msg.model : undefined)
+          break
         case "permission":
           if (isPermissionMessage(msg)) {
             await this.services.replyPermission(msg.workspaceId, msg.requestID, msg.reply)
@@ -164,11 +167,27 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     .composer-wrap { min-width: 0; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border); overflow: hidden; }
     .composer { min-width: 0; max-width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 10px; background: var(--vscode-input-background); overflow: visible; }
     .composer:focus-within { border-color: var(--vscode-focusBorder); }
-    .composer-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; min-width: 0; }
+    .composer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 6px; min-width: 0; }
+    .composer-actions { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 6px; padding: 6px; min-width: 0; }
     .pickers { display: flex; gap: 4px; flex-wrap: wrap; min-width: 0; }
     .pickers button { min-width: 0; }
     .send { display: flex; gap: 4px; min-width: max-content; }
     .hint { grid-column: 1 / -1; min-width: 0; color: var(--vscode-descriptionForeground); font-size: 11px; }
+    @media (max-width: 360px) {
+      .header { align-items: flex-start; flex-direction: column; }
+      .toolbar { width: 100%; justify-content: flex-end; }
+      .status { white-space: normal; }
+      .composer-row { grid-template-columns: 1fr; }
+      .composer-row .send { display: none; }
+      .pickers button { flex: 1 1 auto; }
+      .bubble { max-width: 100%; }
+      .history-list, .menu-list { max-height: 120px; }
+    }
+    @media (min-width: 520px) {
+      .messages { padding: 14px 18px; }
+      .composer-wrap { padding-left: 18px; padding-right: 18px; }
+      .bubble { max-width: 78%; }
+    }
   </style>
 </head>
 <body>
@@ -188,6 +207,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     window.addEventListener('message', event => {
       if (event.data?.type === 'state') {
         workspaces = event.data.workspaces || [];
+        const ws = workspaces[0];
+        selectedModel = ws?.selectedModel || null;
         surfaceWorkspaceError();
         save();
         render();
@@ -251,16 +272,15 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
           </main>
           <footer class="composer-wrap">
             <div class="composer">
-              <textarea id="prompt" aria-label="Prompt" placeholder="Ask OpenCode to build, explain, debug, or refactor...">\${esc(draft)}</textarea>
+              <div class="composer-row"><textarea id="prompt" aria-label="Prompt" placeholder="Ask OpenCode to build, explain, debug, or refactor...">\${esc(draft)}</textarea><div class="send"><button class="primary" data-send="true">Send</button></div></div>
               \${renderMenu(ws)}
               \${renderSelection()}
               <div class="composer-actions">
                 <div class="pickers">
-                  <button class="subtle" data-menu="model" aria-expanded="\${menuOpen === 'model' ? 'true' : 'false'}">Model</button>
+                  <button class="subtle" data-menu="model" aria-expanded="\${menuOpen === 'model' ? 'true' : 'false'}">\${esc(modelButtonLabel())}</button>
                   <button class="subtle" data-menu="agent" aria-expanded="\${menuOpen === 'agent' ? 'true' : 'false'}">Agent</button>
                   <button class="subtle" data-menu="skill" aria-expanded="\${menuOpen === 'skill' ? 'true' : 'false'}">Skill</button>
                 </div>
-                <div class="send"><button class="primary" data-send="true">Send</button></div>
                 <div class="hint">Ctrl+Enter sends. Enter adds a new line.</div>
               </div>
             </div>
@@ -291,22 +311,37 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     }
     function renderSelection() {
       const items = [];
-      if (selectedModel) items.push('<span class="chip">Model: ' + esc(selectedModel.providerID + '/' + selectedModel.modelID) + '</span>');
       if (selectedAgent) items.push('<span class="chip">Agent: @' + esc(selectedAgent) + '</span>');
       return items.length ? '<div class="selection">' + items.join('') + '<button class="subtle" data-clear-selection="true">Clear</button></div>' : '';
     }
+    function modelButtonLabel() { return selectedModel ? (selectedModel.name || selectedModel.label || selectedModel.modelID || 'Model') : 'Model'; }
     function renderMenu(ws) {
       if (!menuOpen) return '';
       if (!ws) return '<div class="menu"><div class="menu-title">Open a workspace first</div></div>';
-      if (menuOpen === 'model') return renderModelMenu(ws.models || []);
+      if (menuOpen === 'model') return renderModelMenu(ws.models || [], ws.recentModels || []);
       if (menuOpen === 'agent') return renderAgentMenu(ws.agents || []);
       if (menuOpen === 'skill') return renderSkillMenu(ws.skills || []);
       return '';
     }
-    function renderModelMenu(models) {
-      const visible = models.slice(0, 80);
-      return '<div class="menu"><div class="menu-title">Choose model</div><div class="menu-list">' + (visible.length ? visible.map(model => '<button data-select-model="true" data-provider-id="' + esc(model.providerID) + '" data-model-id="' + esc(model.modelID) + '" data-label="' + esc(model.label || '') + '">' + esc(model.label || model.modelID) + '<span class="meta">' + esc(model.providerID + '/' + model.modelID) + '</span></button>').join('') : '<button data-menu-refresh="model">No models yet. Retry</button>') + '</div></div>';
+    function renderModelMenu(models, recentModels) {
+      const visible = models.slice(0, 160);
+      if (!visible.length) return '<div class="menu"><div class="menu-title">Models</div><div class="menu-list"><button data-menu-refresh="model">No connected provider models yet. Retry</button></div></div>';
+      const recentKeys = new Set((recentModels || []).map(model => model.providerID + '/' + model.modelID));
+      const recent = (recentModels || []).filter(model => visible.some(item => item.providerID === model.providerID && item.modelID === model.modelID));
+      const byProvider = new Map();
+      for (const model of visible) {
+        const provider = model.providerName || model.providerID || 'Provider';
+        if (!byProvider.has(provider)) byProvider.set(provider, []);
+        byProvider.get(provider).push(model);
+      }
+      const sections = [];
+      if (recent.length) sections.push('<div class="menu-title">Recent models</div>' + recent.map(renderModelButton).join(''));
+      for (const [provider, providerModels] of byProvider) {
+        sections.push('<div class="menu-title">' + esc(provider) + '</div>' + providerModels.filter(model => !recentKeys.has(model.providerID + '/' + model.modelID)).map(renderModelButton).join(''));
+      }
+      return '<div class="menu"><div class="menu-list">' + sections.join('') + '</div></div>';
     }
+    function renderModelButton(model) { return '<button data-select-model="true" data-provider-id="' + esc(model.providerID) + '" data-model-id="' + esc(model.modelID) + '" data-name="' + esc(model.name || model.label || model.modelID) + '" data-label="' + esc(model.label || model.name || '') + '">' + esc(model.name || model.label || model.modelID) + '<span class="meta">' + esc(model.providerID + '/' + model.modelID) + '</span></button>'; }
     function renderAgentMenu(agents) {
       const visible = agents.filter(agent => !agent.hidden).slice(0, 80);
       return '<div class="menu"><div class="menu-title">Choose agent</div><div class="menu-list">' + (visible.length ? visible.map(agent => '<button data-select-agent="' + esc(agent.name) + '">@' + esc(agent.name) + '<span class="meta">' + esc(agent.mode || 'agent') + '</span></button>').join('') : '<button data-menu-refresh="agent">No agents yet. Retry</button>') + '</div></div>';
@@ -387,8 +422,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (button.dataset.menu) { menuOpen = menuOpen === button.dataset.menu ? '' : button.dataset.menu; save(); render(); post('loadMenu', { menu: button.dataset.menu }); }
       if (button.dataset.menuRefresh) post('loadMenu', { menu: button.dataset.menuRefresh });
       if (button.dataset.selectAgent) { selectedAgent = button.dataset.selectAgent; menuOpen = ''; save(); render(); }
-      if (button.dataset.selectModel) { selectedModel = { providerID: button.dataset.providerId, modelID: button.dataset.modelId, label: button.dataset.label || button.dataset.modelId }; menuOpen = ''; save(); render(); }
-      if (button.dataset.clearSelection) { selectedAgent = ''; selectedModel = null; save(); render(); }
+      if (button.dataset.selectModel) { selectedModel = { providerID: button.dataset.providerId, modelID: button.dataset.modelId, name: button.dataset.name || button.dataset.modelId, label: button.dataset.label || button.dataset.name || button.dataset.modelId }; menuOpen = ''; save(); render(); post('setModel', { model: selectedModel }); }
+      if (button.dataset.clearSelection) { selectedAgent = ''; save(); render(); }
       if (button.dataset.sessionId) { messages = []; post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
       if (button.dataset.permission) post('permission', { workspaceId: button.dataset.workspaceId, requestID: button.dataset.requestId, reply: button.dataset.permission });
     });

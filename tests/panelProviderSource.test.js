@@ -7,8 +7,6 @@ const source = fs.readFileSync("src/panelProvider.ts", "utf8")
 test("panel uses CSP-safe delegated click handlers instead of inline onclick", () => {
   assert.doesNotMatch(source, /onclick=/)
   assert.match(source, /document\.addEventListener\('click'/)
-  assert.match(source, /dataset\.post/)
-  assert.match(source, /dataset\.send/)
   assert.match(source, /dataset\.insert/)
   assert.match(source, /dataset\.permission/)
   assert.match(source, /dataset\.menu/)
@@ -17,8 +15,8 @@ test("panel uses CSP-safe delegated click handlers instead of inline onclick", (
 })
 
 test("panel renders controls with data actions for webview postMessage", () => {
-  assert.match(source, /data-post="newSession"/)
-  assert.match(source, /data-send="true"/)
+  assert.match(source, /post\('sendPrompt'/)
+  assert.match(source, /id="prompt"/)
   assert.match(source, /Ready to start/)
 })
 
@@ -86,21 +84,18 @@ test("panel renders session history and streams opencode events", () => {
   assert.match(source, /message\.part\.updated/)
 })
 
-test("panel has compact session bar actions after prompting", () => {
+test("panel compact session bar only expands history after prompting", () => {
   assert.match(source, /function renderTopBar\(ws, hasPrompted\)/)
   assert.match(source, /currentSessionLabel/)
   assert.match(source, /<span class="name">/)
   assert.match(source, /<span class="status">Click to switch sessions<\/span>/)
-  assert.match(source, /data-session-actions="true"/)
-  assert.match(source, /data-post="newSession"/)
-  assert.match(source, /data-post="abort"/)
-  assert.match(source, /data-post="restart"/)
-  assert.match(source, /Restart OpenCode/)
+  assert.doesNotMatch(source, /data-session-actions="true"/)
+  assert.doesNotMatch(source, /function renderSessionActions/)
 })
 
 test("panel closes and persists session history when a session is selected", () => {
   assert.match(source, /if \(button\.dataset\.sessionId\)/)
-  assert.match(source, /sessionListOpen = false; sessionActionsOpen = false; save\(\); render\(\); post\('selectSession'/)
+  assert.match(source, /sessionListOpen = false; save\(\); render\(\); post\('selectSession'/)
 })
 
 test("panel ignores user-role message part events so sent prompts are not duplicated as assistant text", () => {

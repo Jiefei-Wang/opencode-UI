@@ -1,5 +1,12 @@
 import * as assert from "node:assert/strict"
+import * as fs from "node:fs"
 import * as vscode from "vscode"
+
+type PackageJson = {
+  contributes: {
+    commands: { command: string }[]
+  }
+}
 
 suite("OpenCode extension host", () => {
   test("activates and registers core commands", async () => {
@@ -9,12 +16,8 @@ suite("OpenCode extension host", () => {
     await ext.activate()
 
     const commands = await vscode.commands.getCommands(true)
-    for (const command of [
-      "opencode.openPanel",
-      "opencode.newSession",
-      "opencode.abort",
-      "opencode.checkEnvironment",
-    ]) {
+    const pkg = JSON.parse(fs.readFileSync(vscode.Uri.joinPath(ext.extensionUri, "package.json").fsPath, "utf8")) as PackageJson
+    for (const command of pkg.contributes.commands.map((item) => item.command)) {
       assert.ok(commands.includes(command), `${command} should be registered`)
     }
   })

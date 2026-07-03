@@ -24,6 +24,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // tests/vscode/extensionHost.test.ts
 var assert = __toESM(require("node:assert/strict"));
+var fs = __toESM(require("node:fs"));
 var vscode = __toESM(require("vscode"));
 suite("OpenCode extension host", () => {
   test("activates and registers core commands", async () => {
@@ -31,12 +32,8 @@ suite("OpenCode extension host", () => {
     assert.ok(ext, "extension should be discoverable by publisher/name");
     await ext.activate();
     const commands2 = await vscode.commands.getCommands(true);
-    for (const command of [
-      "opencode.openPanel",
-      "opencode.newSession",
-      "opencode.abort",
-      "opencode.checkEnvironment"
-    ]) {
+    const pkg = JSON.parse(fs.readFileSync(vscode.Uri.joinPath(ext.extensionUri, "package.json").fsPath, "utf8"));
+    for (const command of pkg.contributes.commands.map((item) => item.command)) {
       assert.ok(commands2.includes(command), `${command} should be registered`);
     }
   });

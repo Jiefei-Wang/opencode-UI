@@ -28,3 +28,19 @@ test("Open Panel command focuses the secondary sidebar only", () => {
   assert.match(commands, /opencode\.secondaryPanel\.focus/)
   assert.doesNotMatch(commands, /opencode\.panel\.focus/)
 })
+
+test("OpenCode panel title uses grouped menu instead of inline Open Chat", () => {
+  const titleItems = pkg.contributes.menus["view/title"].filter((item) => item.when === "view == opencode.secondaryPanel")
+  assert.equal(titleItems.some((item) => item.command === "opencode.openChat"), false)
+  assert.ok(titleItems.some((item) => item.command === "opencode.newSession"))
+  assert.ok(titleItems.some((item) => item.command === "opencode.restartServer"))
+  assert.ok(titleItems.some((item) => item.submenu === "opencode.panelMenu"))
+
+  const commandIds = pkg.contributes.commands.map((item) => item.command)
+  const categorySubmenuIds = pkg.contributes.menus["opencode.panelMenu"].map((item) => item.submenu)
+  assert.ok(categorySubmenuIds.length > 0)
+  assert.ok(pkg.contributes.menus["opencode.panelMenu"].every((item) => item.submenu && !item.command))
+
+  const menuCommandIds = categorySubmenuIds.flatMap((id) => (pkg.contributes.menus[id] || []).map((item) => item.command).filter(Boolean))
+  assert.deepEqual([...menuCommandIds].sort(), [...commandIds].sort())
+})

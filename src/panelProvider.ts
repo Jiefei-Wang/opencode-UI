@@ -214,7 +214,6 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     let draft = persisted.draft || '';
     let menuOpen = persisted.menuOpen || '';
     let sessionListOpen = persisted.sessionListOpen || false;
-    let sessionActionsOpen = persisted.sessionActionsOpen || false;
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
     const messageRoles = new Map();
@@ -247,7 +246,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     function save() {
       const prompt = document.getElementById('prompt');
       if (prompt) draft = prompt.value;
-      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionActionsOpen, selectedAgent, selectedModel });
+      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, selectedAgent, selectedModel });
     }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     function statusText(ws) {
@@ -312,7 +311,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
           </main>
           <footer class="composer-wrap">
             <div class="composer">
-              <div class="composer-row"><textarea id="prompt" aria-label="Prompt" placeholder="Ask OpenCode to build, explain, debug, or refactor...">\${esc(draft)}</textarea><div class="send"><button class="primary" data-send="true">Send</button></div></div>
+              <div class="composer-row"><textarea id="prompt" aria-label="Prompt" placeholder="Ctrl+Enter sends. Enter adds a new line.">\${esc(draft)}</textarea></div>
               \${renderMenu(ws)}
               <div class="composer-actions">
                 <div class="pickers">
@@ -320,7 +319,6 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
                   <button class="subtle" data-menu="agent" aria-expanded="\${menuOpen === 'agent' ? 'true' : 'false'}">\${esc(agentButtonLabel())}</button>
                   <button class="subtle" data-menu="skill" aria-expanded="\${menuOpen === 'skill' ? 'true' : 'false'}">Skill</button>
                 </div>
-                <div class="hint">Ctrl+Enter sends. Enter adds a new line.</div>
               </div>
             </div>
           </footer>
@@ -337,13 +335,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     }
     function renderTopBar(ws, hasPrompted) {
       if (hasPrompted) {
-        return '<section class="topbar compact"><header class="header"><button class="session-summary" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '"><span class="name">' + esc(currentSessionLabel(ws)) + '</span><span class="status">Click to switch sessions</span></button><div class="toolbar"><button class="subtle" title="Session menu" aria-label="Session menu" data-session-actions="true" aria-expanded="' + (sessionActionsOpen ? 'true' : 'false') + '">...</button></div></header>' + renderSessionActions() + (sessionListOpen ? renderSessionHistory(ws, true, 'History sessions') : '') + '</section>';
+        return '<section class="topbar compact"><header class="header"><button class="session-summary" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '"><span class="name">' + esc(currentSessionLabel(ws)) + '</span><span class="status">Click to switch sessions</span></button></header>' + (sessionListOpen ? renderSessionHistory(ws, true, 'History sessions') : '') + '</section>';
       }
       return '<section class="topbar startup"><header class="header"><div class="workspace"><div class="startup-title">Recent sessions</div><div class="status">' + esc(statusText(ws)) + (ws?.dir ? ' · ' + esc(ws.dir) : '') + '</div></div><div class="toolbar"><button class="subtle" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '">' + (sessionListOpen ? 'Collapse' : 'Show all') + '</button></div></header>' + renderSessionHistory(ws, sessionListOpen, 'Recent sessions') + '</section>';
-    }
-    function renderSessionActions() {
-      if (!sessionActionsOpen) return '';
-      return '<div class="menu"><div class="menu-title">Session</div><div class="menu-list"><button data-post="newSession">New session<span class="meta">Start a fresh OpenCode session</span></button><button data-post="abort">Stop<span class="meta">Stop the active run</span></button><button data-post="restart">Restart OpenCode<span class="meta">Restart the workspace server</span></button></div></div>';
     }
     function renderSessionHistory(ws, expanded, title) {
       if (!ws) return '<section class="history"><div class="history-list"><button disabled>Open a workspace to see sessions</button></div></section>';
@@ -431,7 +425,6 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       messages.push({ role: 'assistant', text: '', kind: 'pending' });
       draft = '';
       sessionListOpen = false;
-      sessionActionsOpen = false;
       el.value = '';
       save();
       render();
@@ -515,20 +508,18 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     }
     document.addEventListener('click', event => {
       const toggleHistory = event.target?.closest?.('[data-toggle-history]');
-      if (toggleHistory && !event.target?.closest?.('[data-session-id]')) { sessionListOpen = !sessionListOpen; sessionActionsOpen = false; save(); render(); return; }
+      if (toggleHistory && !event.target?.closest?.('[data-session-id]')) { sessionListOpen = !sessionListOpen; save(); render(); return; }
       const button = event.target?.closest?.('button');
       if (!button) return;
-      if (button.dataset.post) post(button.dataset.post);
       if (button.dataset.send) sendPrompt();
       if (button.dataset.insert !== undefined) insert(button.dataset.insert);
       if (button.dataset.insertSkill !== undefined) { insert(button.dataset.insertSkill); menuOpen = ''; save(); render(); }
       if (button.dataset.menu) { menuOpen = menuOpen === button.dataset.menu ? '' : button.dataset.menu; save(); render(); post('loadMenu', { menu: button.dataset.menu }); }
       if (button.dataset.menuRefresh) post('loadMenu', { menu: button.dataset.menuRefresh });
-      if (button.dataset.sessionActions) { sessionActionsOpen = !sessionActionsOpen; sessionListOpen = false; menuOpen = ''; save(); render(); }
       if (button.dataset.selectAgent) { selectedAgent = button.dataset.selectAgent; menuOpen = ''; save(); render(); }
       if (button.dataset.clearAgent) { selectedAgent = ''; menuOpen = ''; save(); render(); }
       if (button.dataset.selectModel) { selectedModel = { providerID: button.dataset.providerId, modelID: button.dataset.modelId, name: button.dataset.name || button.dataset.modelId, label: button.dataset.label || button.dataset.name || button.dataset.modelId }; menuOpen = ''; save(); render(); post('setModel', { model: selectedModel }); }
-      if (button.dataset.sessionId) { messages = []; sessionListOpen = false; sessionActionsOpen = false; save(); render(); post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
+      if (button.dataset.sessionId) { messages = []; sessionListOpen = false; save(); render(); post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
       if (button.dataset.permission) post('permission', { workspaceId: button.dataset.workspaceId, requestID: button.dataset.requestId, reply: button.dataset.permission });
     });
     document.addEventListener('input', event => {

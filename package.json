@@ -190,22 +190,133 @@
         "icon": "$(output)"
       }
     ],
+    "submenus": [
+      {
+        "id": "opencode.panelMenu",
+        "label": "OpenCode",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "id": "opencode.panelMenu.sessions",
+        "label": "Sessions"
+      },
+      {
+        "id": "opencode.panelMenu.selection",
+        "label": "Selection"
+      },
+      {
+        "id": "opencode.panelMenu.workspace",
+        "label": "Workspace"
+      },
+      {
+        "id": "opencode.panelMenu.control",
+        "label": "Control"
+      },
+      {
+        "id": "opencode.panelMenu.diagnostics",
+        "label": "Diagnostics"
+      }
+    ],
     "menus": {
       "view/title": [
         {
-          "command": "opencode.openChat",
+          "command": "opencode.newSession",
           "when": "view == opencode.secondaryPanel",
           "group": "navigation@1"
         },
         {
-          "command": "opencode.newSession",
+          "command": "opencode.restartServer",
           "when": "view == opencode.secondaryPanel",
           "group": "navigation@2"
         },
         {
-          "command": "opencode.restartServer",
+          "submenu": "opencode.panelMenu",
           "when": "view == opencode.secondaryPanel",
           "group": "navigation@3"
+        }
+      ],
+      "opencode.panelMenu": [
+        {
+          "submenu": "opencode.panelMenu.sessions",
+          "group": "1_sessions"
+        },
+        {
+          "submenu": "opencode.panelMenu.selection",
+          "group": "2_selection"
+        },
+        {
+          "submenu": "opencode.panelMenu.workspace",
+          "group": "3_workspace"
+        },
+        {
+          "submenu": "opencode.panelMenu.control",
+          "group": "4_control"
+        },
+        {
+          "submenu": "opencode.panelMenu.diagnostics",
+          "group": "5_diagnostics"
+        }
+      ],
+      "opencode.panelMenu.sessions": [
+        {
+          "command": "opencode.openChat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opencode.openPanel",
+          "group": "navigation@2"
+        },
+        {
+          "command": "opencode.newSession",
+          "group": "navigation@3"
+        },
+        {
+          "command": "opencode.resumeSession",
+          "group": "navigation@4"
+        }
+      ],
+      "opencode.panelMenu.selection": [
+        {
+          "command": "opencode.pickAgent",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opencode.pickSkill",
+          "group": "navigation@2"
+        },
+        {
+          "command": "opencode.pickModel",
+          "group": "navigation@3"
+        }
+      ],
+      "opencode.panelMenu.workspace": [
+        {
+          "command": "opencode.showTodo",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opencode.showDiff",
+          "group": "navigation@2"
+        }
+      ],
+      "opencode.panelMenu.control": [
+        {
+          "command": "opencode.abort",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opencode.restartServer",
+          "group": "navigation@2"
+        }
+      ],
+      "opencode.panelMenu.diagnostics": [
+        {
+          "command": "opencode.checkEnvironment",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opencode.openOutput",
+          "group": "navigation@2"
         }
       ]
     },

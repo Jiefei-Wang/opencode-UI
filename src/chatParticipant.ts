@@ -130,6 +130,8 @@ async function handleSlashCommand(request: vscode.ChatRequest, stream: vscode.Ch
 async function streamSessionEvents(services: OpenCodeServices, workspaceId: string, sessionID: string, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) {
   let sawText = false
   const messageRoles = new Map<string, "user" | "assistant">()
+  const partTypes = new Map<string, "reasoning" | "text">()
+  const completedReasoningParts = new Set<string>()
   await new Promise<void>((resolve) => {
     let finished = false
     let sub: vscode.Disposable | undefined
@@ -155,20 +157,23 @@ async function streamSessionEvents(services: OpenCodeServices, workspaceId: stri
 
       if (event.type === "message.part.delta" && typeof props.delta === "string") {
         if (!isAssistantMessageEvent(messageRoles, props)) return
-        sawText = true
-        stream.markdown(props.delta)
+        const partType = props.part?.type ?? partTypes.get(props.partID)
+        if (partType === "text") {
+          sawText = true
+          stream.markdown(props.delta)
+        }
       }
 
       if (event.type === "message.part.updated") {
         if (!isAssistantMessageEvent(messageRoles, props)) return
         const part = props.part
-        if (part?.type === "reasoning" && showThinking() && typeof props.delta === "string") {
-          stream.markdown(`\n<details><summary>Thinking</summary>\n\n${props.delta}\n\n</details>\n`)
-        } else if (typeof props.delta === "string") {
-          sawText = true
-          stream.markdown(props.delta)
+        if (part?.id && (part.type === "reasoning" || part.type === "text")) {
+          partTypes.set(part.id, part.type)
         }
-        if (part?.type === "reasoning" && showThinking() && part.text) stream.markdown(`\n<details><summary>Thinking</summary>\n\n${part.text}\n\n</details>\n`)
+        if (part?.type === "reasoning" && showThinking() && part.id && part.text && part.time?.end && !completedReasoningParts.has(part.id)) {
+          completedReasoningParts.add(part.id)
+          stream.markdown(`\n<details><summary>Thinking</summary>\n\n${part.text}\n\n</details>\n`)
+        }
         if (part?.type === "text" && part.text && !sawText) stream.markdown(part.text)
         if (part?.type === "tool") stream.progress(toolProgress(part))
       }

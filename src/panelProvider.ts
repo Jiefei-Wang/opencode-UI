@@ -160,8 +160,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     .assistant .bubble { border-top-left-radius: 3px; }
     .thinking { max-width: 92%; margin: 0 0 6px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; color: var(--vscode-descriptionForeground); background: color-mix(in srgb, var(--vscode-editor-background) 82%, var(--vscode-sideBar-background)); }
     .thinking summary { padding: 7px 9px; cursor: pointer; font-size: 12px; }
-    .thinking-preview { max-width: 92%; margin: -2px 0 6px; padding: 0 9px 7px; color: var(--vscode-descriptionForeground); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .thinking[open] + .thinking-preview { display: none; }
+    .thinking-preview { padding: 0 9px 7px; color: var(--vscode-descriptionForeground); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .thinking[open] .thinking-preview { display: none; }
     .thinking-body { padding: 0 9px 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .notice { color: var(--vscode-descriptionForeground); font-size: 12px; }
     .notice.error { color: var(--vscode-errorForeground); }
@@ -218,6 +218,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
     const messageRoles = new Map();
+    const partTypes = new Map();
 
     window.addEventListener('message', event => {
       if (event.data?.type === 'state') {
@@ -243,7 +244,11 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     });
 
     function post(type, data = {}) { vscode.postMessage({ type, ...data }); }
-    function save() { vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionActionsOpen, selectedAgent, selectedModel }); }
+    function save() {
+      const prompt = document.getElementById('prompt');
+      if (prompt) draft = prompt.value;
+      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionActionsOpen, selectedAgent, selectedModel });
+    }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     function statusText(ws) {
       if (!ws) return 'Open a folder to start';
@@ -263,10 +268,39 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
         appendNotice(ws.error, 'error');
       }
     }
+    function captureRenderState() {
+      const prompt = document.getElementById('prompt');
+      const menuList = document.querySelector('.menu-list');
+      const activePrompt = document.activeElement?.id === 'prompt' ? prompt : null;
+      return {
+        draft: prompt?.value ?? draft,
+        promptSelectionStart: typeof activePrompt?.selectionStart === 'number' ? activePrompt.selectionStart : null,
+        promptSelectionEnd: typeof activePrompt?.selectionEnd === 'number' ? activePrompt.selectionEnd : null,
+        restorePromptFocus: Boolean(activePrompt),
+        menuOpen,
+        menuScrollTop: typeof menuList?.scrollTop === 'number' ? menuList.scrollTop : null,
+      };
+    }
+    function restoreRenderState(state) {
+      const prompt = document.getElementById('prompt');
+      if (prompt) {
+        prompt.value = state.draft;
+        if (state.restorePromptFocus) {
+          prompt.focus();
+          if (typeof state.promptSelectionStart === 'number' && typeof state.promptSelectionEnd === 'number' && typeof prompt.setSelectionRange === 'function') {
+            prompt.setSelectionRange(state.promptSelectionStart, state.promptSelectionEnd);
+          }
+        }
+      }
+      const menuList = document.querySelector('.menu-list');
+      if (menuOpen === state.menuOpen && menuList && typeof state.menuScrollTop === 'number') {
+        menuList.scrollTop = state.menuScrollTop;
+      }
+    }
     function render() {
       const app = document.getElementById('app');
-      const currentPrompt = document.getElementById('prompt');
-      if (currentPrompt) draft = currentPrompt.value;
+      const renderState = captureRenderState();
+      draft = renderState.draft;
       const ws = workspaces[0];
       const hasPrompted = messages.some(msg => msg.role === 'user');
       app.innerHTML = \`
@@ -295,6 +329,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       prompt?.addEventListener('keydown', event => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendPrompt(); }
       });
+      restoreRenderState(renderState);
       app.querySelector('.messages')?.scrollTo(0, app.querySelector('.messages').scrollHeight);
     }
     function renderEmpty(ws) {
@@ -334,12 +369,12 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       return messages.map(msg => '<div class="message ' + esc(msg.role) + '">' + renderThinking(msg) + renderBubble(msg) + '</div>').join('');
     }
     function renderBubble(msg) {
-      if (!msg.text && msg.thinking && msg.kind === 'pending') return '';
+      if (msg.kind === 'pending' && !msg.text) return '';
       return '<div class="bubble ' + (msg.kind === 'error' ? 'notice error' : '') + '">' + esc(msg.text) + '</div>';
     }
     function renderThinking(msg) {
       if (!msg.thinking) return '';
-      return '<details class="thinking"><summary>Thinking</summary><div class="thinking-body">' + esc(msg.thinking) + '</div></details><div class="thinking-preview">' + esc(lastThinkingLines(msg.thinking)) + '</div>';
+      return '<details class="thinking"><summary>Thinking</summary><div class="thinking-preview">' + esc(lastThinkingLines(msg.thinking)) + '</div><div class="thinking-body">' + esc(msg.thinking) + '</div></details>';
     }
     function lastThinkingLines(text) {
       return String(text || '').split(/\\r?\\n/).filter(Boolean).slice(-3).join('\\n');
@@ -416,12 +451,13 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
 
       if (event.type === 'message.part.delta' && typeof props.delta === 'string') {
         if (!isAssistantMessageEvent(props)) return;
-        appendAssistant(props.delta);
+        const partType = props.part?.type || partTypes.get(props.partID);
+        if (partType === 'reasoning') appendThinking(props.delta);
+        else if (partType === 'text') appendAssistant(props.delta);
       }
       if (event.type === 'message.part.updated') {
         if (!isAssistantMessageEvent(props)) return;
-        if (part.type === 'reasoning' && typeof props.delta === 'string') appendThinking(props.delta);
-        else if (typeof props.delta === 'string') appendAssistant(props.delta);
+        if (part.id && part.type) partTypes.set(part.id, part.type);
         if (part.type === 'reasoning' && part.text) setThinking(part.text);
         else if (part.type === 'text' && part.text) setAssistant(part.text);
         if (part.type === 'tool') appendNotice((part.state?.title || part.tool || 'tool') + ': ' + (part.state?.status || 'running'));

@@ -149,11 +149,13 @@ async function streamSessionEvents(services: OpenCodeServices, workspaceId: stri
       if (eventSession && eventSession !== sessionID) return
 
       if (event.type === "message.part.delta" && typeof props.delta === "string") {
+        if (!isAssistantMessageEvent(props)) return
         sawText = true
         stream.markdown(props.delta)
       }
 
       if (event.type === "message.part.updated") {
+        if (!isAssistantMessageEvent(props)) return
         const part = props.part
         if (typeof props.delta === "string") {
           sawText = true
@@ -187,6 +189,10 @@ function toolProgress(part: any) {
   const title = part.state?.title || part.tool || "tool"
   const status = part.state?.status || "running"
   return `${title}: ${status}`
+}
+
+function isAssistantMessageEvent(props: any) {
+  return props.info?.role === "assistant" || props.info?.role === undefined
 }
 
 function escapeMd(value: string) {

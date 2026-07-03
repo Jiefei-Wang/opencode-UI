@@ -135,16 +135,22 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     button.subtle { padding: 3px 7px; color: var(--vscode-descriptionForeground); }
     textarea { display: block; width: 100%; min-width: 0; min-height: 62px; max-height: 170px; padding: 9px 10px 2px; border: 0; outline: 0; resize: vertical; color: var(--vscode-input-foreground); background: transparent; line-height: 1.45; }
     .shell { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
-    .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
-    .workspace { min-width: 0; }
+    .topbar { border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
+    .header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; }
+    .workspace { min-width: 0; flex: 1 1 auto; }
     .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status { margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .toolbar { display: flex; gap: 2px; flex: 0 0 auto; }
+    .session-summary { min-width: 0; flex: 1 1 auto; padding: 2px 0; text-align: left; }
+    .session-summary span { display: block; }
+    .startup-title { min-width: 0; color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
     .messages { min-height: 0; overflow-y: auto; padding: 10px; }
-    .history { margin: 0 0 12px; padding: 8px; border: 1px solid var(--vscode-panel-border); border-radius: 10px; background: var(--vscode-editor-background); }
+    .history { margin: 0; padding: 0 8px 8px; }
     .history-title { margin-bottom: 6px; color: var(--vscode-descriptionForeground); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-    .history-list { display: grid; gap: 4px; max-height: 145px; overflow-y: auto; }
+    .history-list { display: grid; gap: 4px; max-height: 145px; overflow-y: auto; padding: 2px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: var(--vscode-editor-background); }
+    .history.expanded .history-list { max-height: min(44vh, 320px); }
     .history button { width: 100%; padding: 6px 7px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history button.active { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
     .empty { height: 100%; display: grid; align-content: center; justify-items: center; gap: 7px; text-align: center; color: var(--vscode-descriptionForeground); padding: 20px; }
     .empty-title { color: var(--vscode-foreground); font-size: 15px; font-weight: 600; }
     .message { margin: 0 0 12px; }
@@ -158,12 +164,13 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     .detail-row button { padding: 3px 7px; color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-panel-border); }
     .menu { margin-top: 8px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
     .menu-title { padding: 7px 8px; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    .menu-title.model-category { --model-category-accent: var(--vscode-charts-purple, #c586f1); color: var(--model-category-accent); border-bottom-color: color-mix(in srgb, var(--model-category-accent) 35%, var(--vscode-panel-border)); background: color-mix(in srgb, var(--model-category-accent) 12%, var(--vscode-dropdown-background)); font-weight: 700; }
+    .model-category.recent { --model-category-accent: var(--vscode-charts-purple, #c586f1); }
+    .model-category.provider { --model-category-accent: var(--vscode-charts-blue, var(--vscode-charts-purple, #c586f1)); }
     .menu-list { max-height: 210px; overflow-y: auto; }
     .menu button { width: 100%; display: block; padding: 7px 8px; border-radius: 0; text-align: left; }
     .menu button:hover { background: var(--vscode-list-hoverBackground); }
     .menu .meta { display: block; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .selection { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
-    .chip { padding: 3px 7px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; color: var(--vscode-descriptionForeground); background: var(--vscode-badge-background); }
     .composer-wrap { min-width: 0; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border); overflow: hidden; }
     .composer { min-width: 0; max-width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 10px; background: var(--vscode-input-background); overflow: visible; }
     .composer:focus-within { border-color: var(--vscode-focusBorder); }
@@ -174,7 +181,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     .send { display: flex; gap: 4px; min-width: max-content; }
     .hint { grid-column: 1 / -1; min-width: 0; color: var(--vscode-descriptionForeground); font-size: 11px; }
     @media (max-width: 360px) {
-      .header { align-items: flex-start; flex-direction: column; }
+      .header { align-items: stretch; flex-direction: column; }
       .toolbar { width: 100%; justify-content: flex-end; }
       .status { white-space: normal; }
       .composer-row { grid-template-columns: 1fr; }
@@ -201,6 +208,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     let noticeLevel = persisted.noticeLevel || 'sent';
     let draft = persisted.draft || '';
     let menuOpen = persisted.menuOpen || '';
+    let sessionListOpen = persisted.sessionListOpen || false;
+    let sessionActionsOpen = persisted.sessionActionsOpen || false;
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
 
@@ -228,7 +237,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     });
 
     function post(type, data = {}) { vscode.postMessage({ type, ...data }); }
-    function save() { vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, selectedAgent, selectedModel }); }
+    function save() { vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionActionsOpen, selectedAgent, selectedModel }); }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     function statusText(ws) {
       if (!ws) return 'Open a folder to start';
@@ -253,20 +262,11 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       const currentPrompt = document.getElementById('prompt');
       if (currentPrompt) draft = currentPrompt.value;
       const ws = workspaces[0];
+      const hasPrompted = messages.some(msg => msg.role === 'user');
       app.innerHTML = \`
         <div class="shell">
-          <header class="header">
-            <div class="workspace">
-              <div class="name">\${ws ? esc(ws.name || ws.dir || 'Workspace') : 'OpenCode'}</div>
-              <div class="status">\${esc(statusText(ws))}\${ws?.dir ? ' · ' + esc(ws.dir) : ''}</div>
-            </div>
-            <div class="toolbar">
-              <button class="subtle" title="New session" aria-label="New session" data-post="newSession">+</button>
-              <button class="subtle" title="Stop" aria-label="Stop active run" data-post="abort">Stop</button>
-            </div>
-          </header>
+          \${renderTopBar(ws, hasPrompted)}
           <main class="messages">
-            \${renderSessionHistory(ws)}
             \${messages.length ? renderMessages() : renderEmpty(ws)}
             \${renderPermissions(ws)}
           </main>
@@ -274,11 +274,10 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
             <div class="composer">
               <div class="composer-row"><textarea id="prompt" aria-label="Prompt" placeholder="Ask OpenCode to build, explain, debug, or refactor...">\${esc(draft)}</textarea><div class="send"><button class="primary" data-send="true">Send</button></div></div>
               \${renderMenu(ws)}
-              \${renderSelection()}
               <div class="composer-actions">
                 <div class="pickers">
                   <button class="subtle" data-menu="model" aria-expanded="\${menuOpen === 'model' ? 'true' : 'false'}">\${esc(modelButtonLabel())}</button>
-                  <button class="subtle" data-menu="agent" aria-expanded="\${menuOpen === 'agent' ? 'true' : 'false'}">Agent</button>
+                  <button class="subtle" data-menu="agent" aria-expanded="\${menuOpen === 'agent' ? 'true' : 'false'}">\${esc(agentButtonLabel())}</button>
                   <button class="subtle" data-menu="skill" aria-expanded="\${menuOpen === 'skill' ? 'true' : 'false'}">Skill</button>
                 </div>
                 <div class="hint">Ctrl+Enter sends. Enter adds a new line.</div>
@@ -295,11 +294,35 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     function renderEmpty(ws) {
       return '<section class="empty"><div class="empty-title">How can I help?</div><div>' + (ws ? 'Ask OpenCode to work in ' + esc(ws.name || 'this workspace') + '.' : 'Open a workspace to start.') + '</div></section>';
     }
-    function renderSessionHistory(ws) {
-      if (!ws || messages.some(msg => msg.role === 'user')) return '';
-      const sessions = (ws.sessions || []).slice().sort((a, b) => ((b.time?.updated || b.time?.created || 0) - (a.time?.updated || a.time?.created || 0))).slice(0, 8);
-      if (!sessions.length) return '';
-      return '<section class="history"><div class="history-title">Recent sessions</div><div class="history-list">' + sessions.map(session => '<button data-session-id="' + esc(session.id) + '" data-workspace-id="' + esc(ws.workspaceId) + '">' + esc(session.title || session.id) + '<span class="meta">' + esc(session.id) + '</span></button>').join('') + '</div></section>';
+    function renderTopBar(ws, hasPrompted) {
+      if (hasPrompted) {
+        return '<section class="topbar compact"><header class="header"><button class="session-summary" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '"><span class="name">' + esc(currentSessionLabel(ws)) + '</span><span class="status">Click to switch sessions</span></button><div class="toolbar"><button class="subtle" title="Session menu" aria-label="Session menu" data-session-actions="true" aria-expanded="' + (sessionActionsOpen ? 'true' : 'false') + '">...</button></div></header>' + renderSessionActions() + (sessionListOpen ? renderSessionHistory(ws, true, 'History sessions') : '') + '</section>';
+      }
+      return '<section class="topbar startup"><header class="header"><div class="workspace"><div class="startup-title">Recent sessions</div><div class="status">' + esc(statusText(ws)) + (ws?.dir ? ' · ' + esc(ws.dir) : '') + '</div></div><div class="toolbar"><button class="subtle" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '">' + (sessionListOpen ? 'Collapse' : 'Show all') + '</button></div></header>' + renderSessionHistory(ws, sessionListOpen, 'Recent sessions') + '</section>';
+    }
+    function renderSessionActions() {
+      if (!sessionActionsOpen) return '';
+      return '<div class="menu"><div class="menu-title">Session</div><div class="menu-list"><button data-post="newSession">New session<span class="meta">Start a fresh OpenCode session</span></button><button data-post="abort">Stop<span class="meta">Stop the active run</span></button><button data-post="restart">Restart OpenCode<span class="meta">Restart the workspace server</span></button></div></div>';
+    }
+    function renderSessionHistory(ws, expanded, title) {
+      if (!ws) return '<section class="history"><div class="history-list"><button disabled>Open a workspace to see sessions</button></div></section>';
+      const sessions = sortedSessions(ws);
+      if (!sessions.length) return '<section class="history"><div class="history-list"><button disabled>No sessions yet</button></div></section>';
+      const visible = expanded ? sessions : sessions.slice(0, 5);
+      const more = sessions.length > visible.length ? '<button data-toggle-history="true">Show ' + (sessions.length - visible.length) + ' more sessions</button>' : '';
+      return '<section class="history ' + (expanded ? 'expanded' : 'collapsed') + '"><div class="history-title">' + esc(title) + '</div><div class="history-list">' + visible.map(session => renderSessionButton(ws, session)).join('') + more + '</div></section>';
+    }
+    function renderSessionButton(ws, session) {
+      const active = session.id === ws.activeSessionId ? ' active' : '';
+      return '<button class="' + active + '" data-session-id="' + esc(session.id) + '" data-workspace-id="' + esc(ws.workspaceId) + '">' + esc(session.title || session.id) + '<span class="meta">' + esc(session.id) + '</span></button>';
+    }
+    function sortedSessions(ws) {
+      return (ws?.sessions || []).slice().sort((a, b) => ((b.time?.updated || b.time?.created || 0) - (a.time?.updated || a.time?.created || 0)));
+    }
+    function currentSessionLabel(ws) {
+      if (!ws?.activeSessionId) return 'Current session';
+      const session = sortedSessions(ws).find(item => item.id === ws.activeSessionId);
+      return session?.title || ws.activeSessionId;
     }
     function renderMessages() {
       return messages.map(msg => '<div class="message ' + esc(msg.role) + '"><div class="bubble ' + (msg.kind === 'error' ? 'notice error' : '') + '">' + esc(msg.text) + '</div></div>').join('');
@@ -309,12 +332,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (!permissions.length) return '';
       return '<div class="notice">Pending permissions</div>' + permissions.map(permission => '<div class="detail-row"><span>' + esc(permission.permission || 'Permission') + '</span><button data-permission="once" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Approve once</button><button data-permission="always" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Always</button><button data-permission="reject" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Reject</button></div>').join('');
     }
-    function renderSelection() {
-      const items = [];
-      if (selectedAgent) items.push('<span class="chip">Agent: @' + esc(selectedAgent) + '</span>');
-      return items.length ? '<div class="selection">' + items.join('') + '<button class="subtle" data-clear-selection="true">Clear</button></div>' : '';
-    }
     function modelButtonLabel() { return selectedModel ? (selectedModel.name || selectedModel.label || selectedModel.modelID || 'Model') : 'Model'; }
+    function agentButtonLabel() { return selectedAgent || 'Agent'; }
     function renderMenu(ws) {
       if (!menuOpen) return '';
       if (!ws) return '<div class="menu"><div class="menu-title">Open a workspace first</div></div>';
@@ -335,16 +354,18 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
         byProvider.get(provider).push(model);
       }
       const sections = [];
-      if (recent.length) sections.push('<div class="menu-title">Recent models</div>' + recent.map(renderModelButton).join(''));
+      if (recent.length) sections.push('<div class="menu-title model-category recent">Recent models</div>' + recent.map(renderModelButton).join(''));
       for (const [provider, providerModels] of byProvider) {
-        sections.push('<div class="menu-title">' + esc(provider) + '</div>' + providerModels.filter(model => !recentKeys.has(model.providerID + '/' + model.modelID)).map(renderModelButton).join(''));
+        sections.push('<div class="menu-title model-category provider">' + esc(provider) + '</div>' + providerModels.filter(model => !recentKeys.has(model.providerID + '/' + model.modelID)).map(renderModelButton).join(''));
       }
       return '<div class="menu"><div class="menu-list">' + sections.join('') + '</div></div>';
     }
     function renderModelButton(model) { return '<button data-select-model="true" data-provider-id="' + esc(model.providerID) + '" data-model-id="' + esc(model.modelID) + '" data-name="' + esc(model.name || model.label || model.modelID) + '" data-label="' + esc(model.label || model.name || '') + '">' + esc(model.name || model.label || model.modelID) + '<span class="meta">' + esc(model.providerID + '/' + model.modelID) + '</span></button>'; }
     function renderAgentMenu(agents) {
       const visible = agents.filter(agent => !agent.hidden).slice(0, 80);
-      return '<div class="menu"><div class="menu-title">Choose agent</div><div class="menu-list">' + (visible.length ? visible.map(agent => '<button data-select-agent="' + esc(agent.name) + '">@' + esc(agent.name) + '<span class="meta">' + esc(agent.mode || 'agent') + '</span></button>').join('') : '<button data-menu-refresh="agent">No agents yet. Retry</button>') + '</div></div>';
+      const none = '<button data-clear-agent="true">None<span class="meta">Use OpenCode default agent</span></button>';
+      const agentButtons = visible.length ? visible.map(agent => '<button data-select-agent="' + esc(agent.name) + '">@' + esc(agent.name) + '<span class="meta">' + esc(agent.mode || 'agent') + '</span></button>').join('') : '<button data-menu-refresh="agent">No agents yet. Retry</button>';
+      return '<div class="menu"><div class="menu-title">Choose agent</div><div class="menu-list">' + none + agentButtons + '</div></div>';
     }
     function renderSkillMenu(skills) {
       const visible = skills.slice(0, 80);
@@ -357,6 +378,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       messages.push({ role: 'user', text: prompt });
       messages.push({ role: 'assistant', text: '', kind: 'pending' });
       draft = '';
+      sessionListOpen = false;
+      sessionActionsOpen = false;
       el.value = '';
       save();
       render();
@@ -370,8 +393,12 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (ws?.workspaceId !== workspaceId) return;
       if (ws?.activeSessionId && sessionID && sessionID !== ws.activeSessionId) return;
 
-      if (event.type === 'message.part.delta' && typeof props.delta === 'string') appendAssistant(props.delta);
+      if (event.type === 'message.part.delta' && typeof props.delta === 'string') {
+        if (!isAssistantMessageEvent(props)) return;
+        appendAssistant(props.delta);
+      }
       if (event.type === 'message.part.updated') {
+        if (!isAssistantMessageEvent(props)) return;
         if (typeof props.delta === 'string') appendAssistant(props.delta);
         else if (part.type === 'text' && part.text) setAssistant(part.text);
         if (part.type === 'tool') appendNotice((part.state?.title || part.tool || 'tool') + ': ' + (part.state?.status || 'running'));
@@ -404,6 +431,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'assistant') return messages[i];
       return undefined;
     }
+    function isAssistantMessageEvent(props) {
+      return props.info?.role === 'assistant' || props.info?.role === undefined;
+    }
     function insert(text) {
       const el = document.getElementById('prompt');
       if (!el) return;
@@ -413,6 +443,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       el.focus();
     }
     document.addEventListener('click', event => {
+      const toggleHistory = event.target?.closest?.('[data-toggle-history]');
+      if (toggleHistory && !event.target?.closest?.('[data-session-id]')) { sessionListOpen = !sessionListOpen; sessionActionsOpen = false; save(); render(); return; }
       const button = event.target?.closest?.('button');
       if (!button) return;
       if (button.dataset.post) post(button.dataset.post);
@@ -421,10 +453,11 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (button.dataset.insertSkill !== undefined) { insert(button.dataset.insertSkill); menuOpen = ''; save(); render(); }
       if (button.dataset.menu) { menuOpen = menuOpen === button.dataset.menu ? '' : button.dataset.menu; save(); render(); post('loadMenu', { menu: button.dataset.menu }); }
       if (button.dataset.menuRefresh) post('loadMenu', { menu: button.dataset.menuRefresh });
+      if (button.dataset.sessionActions) { sessionActionsOpen = !sessionActionsOpen; sessionListOpen = false; menuOpen = ''; save(); render(); }
       if (button.dataset.selectAgent) { selectedAgent = button.dataset.selectAgent; menuOpen = ''; save(); render(); }
+      if (button.dataset.clearAgent) { selectedAgent = ''; menuOpen = ''; save(); render(); }
       if (button.dataset.selectModel) { selectedModel = { providerID: button.dataset.providerId, modelID: button.dataset.modelId, name: button.dataset.name || button.dataset.modelId, label: button.dataset.label || button.dataset.name || button.dataset.modelId }; menuOpen = ''; save(); render(); post('setModel', { model: selectedModel }); }
-      if (button.dataset.clearSelection) { selectedAgent = ''; save(); render(); }
-      if (button.dataset.sessionId) { messages = []; post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
+      if (button.dataset.sessionId) { messages = []; sessionListOpen = false; sessionActionsOpen = false; save(); render(); post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
       if (button.dataset.permission) post('permission', { workspaceId: button.dataset.workspaceId, requestID: button.dataset.requestId, reply: button.dataset.permission });
     });
     document.addEventListener('input', event => {

@@ -27,13 +27,12 @@ test("panel removes command chips and details controls", () => {
   assert.doesNotMatch(source, /data-insert="\/agent /)
   assert.doesNotMatch(source, /data-insert="\/diff /)
   assert.doesNotMatch(source, /data-post="resumeSession"/)
-  assert.doesNotMatch(source, /data-post="restart"/)
   assert.doesNotMatch(source, /data-post="output"/)
 })
 
 test("panel renders model agent and skill menus inline", () => {
   assert.match(source, /data-menu="model"/)
-  assert.doesNotMatch(source, /Use OpenCode default/)
+  assert.doesNotMatch(source, /Use OpenCode default model/)
   assert.match(source, /Recent models/)
   assert.match(source, /byProvider/)
   assert.match(source, /data-menu="agent"/)
@@ -44,6 +43,15 @@ test("panel renders model agent and skill menus inline", () => {
   assert.match(source, /case "loadMenu":/)
 })
 
+test("panel highlights model menu category headers", () => {
+  assert.match(source, /\.menu-title\.model-category/)
+  assert.match(source, /\.model-category\.recent/)
+  assert.match(source, /\.model-category\.provider/)
+  assert.match(source, /class="menu-title model-category recent">Recent models/)
+  assert.match(source, /class="menu-title model-category provider">' \+ esc\(provider\) \+ '<\/div>/)
+  assert.match(source, /var\(--vscode-charts-purple, #c586f1\)/)
+})
+
 test("panel sends selected model and agent with prompts", () => {
   assert.match(source, /selectedModel = persisted\.selectedModel/)
   assert.match(source, /selectedModel = ws\?\.selectedModel \|\| null/)
@@ -51,16 +59,54 @@ test("panel sends selected model and agent with prompts", () => {
   assert.match(source, /post\('sendPrompt', \{ prompt, agent: selectedAgent/)
   assert.match(source, /post\('setModel'/)
   assert.match(source, /modelButtonLabel/)
+  assert.match(source, /agentButtonLabel/)
   assert.match(source, /function isModelPick/)
+})
+
+test("panel agent picker mirrors model label and can clear selection", () => {
+  assert.match(source, /\$\{esc\(agentButtonLabel\(\)\)\}/)
+  assert.match(source, /function agentButtonLabel\(\) \{ return selectedAgent \|\| 'Agent'; \}/)
+  assert.match(source, />None<span class="meta">Use OpenCode default agent<\/span>/)
+  assert.match(source, /data-clear-agent="true"/)
+  assert.match(source, /button\.dataset\.clearAgent/)
+  assert.match(source, /agent: selectedAgent \|\| undefined/)
+  assert.doesNotMatch(source, /renderSelection/)
+  assert.doesNotMatch(source, /data-clear-selection/)
+  assert.doesNotMatch(source, /Agent: @/)
 })
 
 test("panel renders session history and streams opencode events", () => {
   assert.match(source, /renderSessionHistory/)
   assert.match(source, /data-session-id/)
+  assert.match(source, /data-toggle-history="true"/)
+  assert.match(source, /sessionListOpen/)
   assert.match(source, /case "selectSession":/)
   assert.match(source, /services\.onDidEvent/)
   assert.match(source, /handleOpenCodeEvent/)
   assert.match(source, /message\.part\.updated/)
+})
+
+test("panel has compact session bar actions after prompting", () => {
+  assert.match(source, /function renderTopBar\(ws, hasPrompted\)/)
+  assert.match(source, /currentSessionLabel/)
+  assert.match(source, /<span class="name">/)
+  assert.match(source, /<span class="status">Click to switch sessions<\/span>/)
+  assert.match(source, /data-session-actions="true"/)
+  assert.match(source, /data-post="newSession"/)
+  assert.match(source, /data-post="abort"/)
+  assert.match(source, /data-post="restart"/)
+  assert.match(source, /Restart OpenCode/)
+})
+
+test("panel closes and persists session history when a session is selected", () => {
+  assert.match(source, /if \(button\.dataset\.sessionId\)/)
+  assert.match(source, /sessionListOpen = false; sessionActionsOpen = false; save\(\); render\(\); post\('selectSession'/)
+})
+
+test("panel ignores user-role message part events so sent prompts are not duplicated as assistant text", () => {
+  assert.match(source, /function isAssistantMessageEvent\(props\)/)
+  assert.match(source, /if \(!isAssistantMessageEvent\(props\)\) return;/)
+  assert.match(source, /props\.info\?\.role === 'assistant'/)
 })
 
 test("panel keeps composer usable in narrow panes and surfaces runtime errors", () => {

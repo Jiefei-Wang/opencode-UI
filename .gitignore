@@ -37,3 +37,4 @@ pnpm-debug.log*
 Thumbs.db
 .idea/
 .vs/
+.omo/

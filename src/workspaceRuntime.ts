@@ -20,11 +20,15 @@ export function workspaceId(folder: MinimalWorkspaceFolder) {
   return folder.uri.toString()
 }
 
+export function normalizeWorkspacePath(value: string) {
+  return /^[a-z]:[\\/]/.test(value) ? value[0].toUpperCase() + value.slice(1) : value
+}
+
 export function createStoppedRuntime(folder: MinimalWorkspaceFolder): StoppedWorkspaceRuntime {
   return {
     workspaceId: workspaceId(folder),
     folder,
-    dir: folder.uri.fsPath,
+    dir: normalizeWorkspacePath(folder.uri.fsPath),
     name: folder.name,
     state: "stopped",
   }

@@ -24,3 +24,16 @@ test("services load models from connected config providers", () => {
   assert.match(source, /client\?\.config\?\.providers/)
   assert.doesNotMatch(source, /client\?\.provider\?\.list/)
 })
+
+test("services snapshot exposes the OpenCode session list loaded for each workspace", () => {
+  assert.match(source, /sessions: this\.sessions\.get\(rt\.workspaceId\) \?\? \[\]/)
+  assert.match(source, /return list/)
+  assert.match(source, /rt\.client\.session\.list\(\{ directory: rt\.dir, roots: true \}\)/)
+})
+
+test("services log detailed session refresh diagnostics", () => {
+  assert.match(source, /refreshSessions start workspaceId=/)
+  assert.match(source, /refreshSessions result count=/)
+  assert.match(source, /session id=\$\{session\.id\}/)
+  assert.match(source, /snapshotCount=/)
+})

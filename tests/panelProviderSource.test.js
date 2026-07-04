@@ -84,6 +84,40 @@ test("panel renders session history and streams opencode events", () => {
   assert.match(source, /message\.part\.updated/)
 })
 
+test("panel posts the current snapshot as soon as the webview resolves", () => {
+  assert.match(source, /resolveWebviewView\(view: vscode\.WebviewView\)/)
+  assert.match(source, /this\.viewSub = view\.webview\.onDidReceiveMessage\(\(msg\) => void this\.handleMessage\(msg\)\)/)
+  assert.match(source, /this\.postState\(\)/)
+})
+
+test("panel refreshes OpenCode sessions when the webview resolves", () => {
+  assert.match(source, /refreshCurrent\(\)/)
+  assert.match(source, /refreshPanelState\(\)/)
+  assert.match(source, /void this\.refreshPanelState\(\)/)
+})
+
+test("panel asks the extension to refresh when a ready workspace has empty history", () => {
+  assert.match(source, /case "refreshSessions":/)
+  assert.match(source, /requestSessionRefresh\(ws\)/)
+  assert.match(source, /post\('refreshSessions'/)
+})
+
+test("panel surfaces a refresh notice when refreshing sessions", () => {
+  assert.match(source, /Refreshing OpenCode sessions/)
+})
+
+test("panel clears local chat when native session changes", () => {
+  assert.match(source, /let activeSessionId = persisted\.activeSessionId/)
+  assert.match(source, /function syncActiveSession\(ws\)/)
+  assert.match(source, /if \(nextSessionId && activeSessionId && nextSessionId !== activeSessionId\)/)
+  assert.match(source, /messages = \[\];/)
+})
+
+test("panel ready refreshes sessions before rendering history", () => {
+  assert.match(source, /case "ready":/)
+  assert.match(source, /await this\.services\.refreshCurrent\(\)/)
+})
+
 test("panel compact session bar only expands history after prompting", () => {
   assert.match(source, /function renderTopBar\(ws, hasPrompted\)/)
   assert.match(source, /currentSessionLabel/)

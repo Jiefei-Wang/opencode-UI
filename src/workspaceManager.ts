@@ -3,7 +3,7 @@ import * as vscode from "vscode"
 import { createClient } from "./client"
 import type { OpenCodeClient, RuntimeState } from "./opencodeTypes"
 import { freePort, spawnServer, startupFailure, stopServer, waitForHealth } from "./server"
-import { createStoppedRuntime, workspaceId } from "./workspaceRuntime"
+import { createStoppedRuntime, normalizeWorkspacePath, workspaceId } from "./workspaceRuntime"
 
 export type WorkspaceRuntime = {
   workspaceId: string
@@ -87,13 +87,14 @@ export class WorkspaceManager implements vscode.Disposable {
 
     const port = await freePort()
     const url = `http://127.0.0.1:${port}`
-    const proc = spawnServer(folder.uri.fsPath, port)
+    const dir = normalizeWorkspacePath(folder.uri.fsPath)
+    const proc = spawnServer(dir, port)
     const resolution = (proc as cp.ChildProcess & { opencodeResolution?: { command: string; diagnostics?: unknown } }).opencodeResolution
     const startup = startupFailure(proc)
     const rt: WorkspaceRuntime = {
       workspaceId: id,
       folder,
-      dir: folder.uri.fsPath,
+      dir,
       name: folder.name,
       state: "starting",
       port,

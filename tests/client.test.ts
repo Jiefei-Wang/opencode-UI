@@ -55,6 +55,28 @@ test("client supports direct OpenCode session object responses and sends prompt 
   }
 })
 
+test("client canonicalizes Windows drive-letter directories in session list queries", async () => {
+  const requests: string[] = []
+  const server = http.createServer((req, res) => {
+    requests.push(req.url ?? "")
+    req.resume()
+    res.setHeader("content-type", "application/json")
+    res.end(JSON.stringify([]))
+  })
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const addr = server.address()
+    assert.equal(typeof addr, "object")
+    const client = await createClient(`http://127.0.0.1:${addr!.port}`, "g:\\My Drive\\slides\\lecture 7")
+    await client.session.list({ roots: true })
+
+    assert.match(requests[0], /directory=G%3A%5CMy\+Drive%5Cslides%5Clecture\+7/)
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
+
 test("client parses CRLF-delimited SSE events", async () => {
   const server = http.createServer((req, res) => {
     if (req.method === "GET" && req.url?.startsWith("/api/event")) {

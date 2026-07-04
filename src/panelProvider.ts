@@ -19,6 +19,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     view.webview.html = this.html(view.webview)
     this.viewSub?.dispose()
     this.viewSub = view.webview.onDidReceiveMessage((msg) => void this.handleMessage(msg))
+    this.postState()
+    void this.refreshPanelState()
   }
 
   dispose() {
@@ -92,8 +94,11 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
           }
           break
         case "ready":
-          this.postState()
+          await this.services.refreshCurrent()
           break
+        case "refreshSessions":
+          await this.refreshPanelState()
+          return
       }
       this.postState()
     } catch (err) {
@@ -103,7 +108,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private postState() {
-    void this.view?.webview.postMessage({ type: "state", workspaces: this.services.snapshot() })
+    const workspaces = this.services.snapshot()
+    void this.view?.webview.postMessage({ type: "state", workspaces })
   }
 
   private postNotice(level: "sent" | "error", text: string) {
@@ -112,6 +118,17 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
 
   private postEvent(workspaceId: string, event: any) {
     void this.view?.webview.postMessage({ type: "event", workspaceId, event })
+  }
+
+  private async refreshPanelState() {
+    this.postNotice("sent", "Refreshing OpenCode sessions...")
+    try {
+      await this.services.refreshCurrent()
+    } catch (err) {
+      this.postNotice("error", err instanceof Error ? err.message : String(err))
+    } finally {
+      this.postState()
+    }
   }
 
   private html(webview: vscode.Webview) {
@@ -214,6 +231,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     let draft = persisted.draft || '';
     let menuOpen = persisted.menuOpen || '';
     let sessionListOpen = persisted.sessionListOpen || false;
+    let sessionRefreshWorkspaceId = persisted.sessionRefreshWorkspaceId || '';
+    let activeSessionId = persisted.activeSessionId || '';
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
     const messageRoles = new Map();
@@ -224,6 +243,8 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
         workspaces = event.data.workspaces || [];
         const ws = workspaces[0];
         selectedModel = ws?.selectedModel || null;
+        syncActiveSession(ws);
+        requestSessionRefresh(ws);
         surfaceWorkspaceError();
         save();
         render();
@@ -246,7 +267,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     function save() {
       const prompt = document.getElementById('prompt');
       if (prompt) draft = prompt.value;
-      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, selectedAgent, selectedModel });
+      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, selectedAgent, selectedModel });
     }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     function statusText(ws) {
@@ -266,6 +287,23 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (msg?.kind === 'pending' || messages.some(item => item.role === 'user')) {
         appendNotice(ws.error, 'error');
       }
+    }
+    function syncActiveSession(ws) {
+      const nextSessionId = ws?.activeSessionId || '';
+      if (nextSessionId && activeSessionId && nextSessionId !== activeSessionId) {
+        messages = [];
+        messageRoles.clear();
+        partTypes.clear();
+        sessionListOpen = false;
+      }
+      activeSessionId = nextSessionId;
+    }
+    function requestSessionRefresh(ws) {
+      if (!ws || ws.state !== 'ready') return;
+      if ((ws.sessions || []).length) { sessionRefreshWorkspaceId = ''; return; }
+      if (sessionRefreshWorkspaceId === ws.workspaceId) return;
+      sessionRefreshWorkspaceId = ws.workspaceId;
+      post('refreshSessions', { workspaceId: ws.workspaceId });
     }
     function captureRenderState() {
       const prompt = document.getElementById('prompt');

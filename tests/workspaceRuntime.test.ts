@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createStoppedRuntime, workspaceId } from "../src/workspaceRuntime"
+import { createStoppedRuntime, normalizeWorkspacePath, workspaceId } from "../src/workspaceRuntime"
 
 test("createStoppedRuntime seeds an opened VS Code folder before the server starts", () => {
   const folder = {
@@ -30,4 +30,9 @@ test("workspaceId uses VS Code's URI string, not the display name or filesystem 
   }
 
   assert.equal(workspaceId(folder), "file:///c%3A/repo")
+})
+
+test("normalizeWorkspacePath canonicalizes Windows drive-letter casing", () => {
+  assert.equal(normalizeWorkspacePath("g:\\My Drive\\slides\\lecture 7"), "G:\\My Drive\\slides\\lecture 7")
+  assert.equal(normalizeWorkspacePath("\\\\server\\share\\lecture 7"), "\\\\server\\share\\lecture 7")
 })

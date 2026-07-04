@@ -127,6 +127,12 @@ export class OpenCodeServices implements vscode.Disposable {
     this.log(`[${rt.name}] prompt accepted session=${session.id}`)
   }
 
+  async refreshCurrent() {
+    const rt = await this.ensureReady()
+    this.log(`[${rt.name}] refreshCurrent dir=${rt.dir} state=${rt.state} url=${rt.url ?? "<none>"}`)
+    await this.refreshSessions(rt)
+  }
+
   async abortActive(rt?: WorkspaceRuntime) {
     const runtime = rt ?? this.mgr.get()
     const sessionID = runtime ? this.activeSessions.get(runtime.workspaceId) : undefined
@@ -136,7 +142,11 @@ export class OpenCodeServices implements vscode.Disposable {
   }
 
   async refreshSessions(rt: WorkspaceRuntime) {
-    if (!rt.client) return []
+    this.log(`[${rt.name}] refreshSessions start workspaceId=${rt.workspaceId} dir=${rt.dir} state=${rt.state} url=${rt.url ?? "<none>"} hasClient=${Boolean(rt.client)}`)
+    if (!rt.client) {
+      this.log(`[${rt.name}] refreshSessions skipped: no OpenCode client`)
+      return []
+    }
     const [listRes, statusRes] = await Promise.all([
       rt.client.session.list({ directory: rt.dir, roots: true }),
       rt.client.session.status({ directory: rt.dir }).catch(() => ({ data: undefined })),
@@ -144,6 +154,10 @@ export class OpenCodeServices implements vscode.Disposable {
     const list = listRes.data ?? []
     this.sessions.set(rt.workspaceId, list)
     const statuses = statusRes.data ?? {}
+    this.log(`[${rt.name}] refreshSessions result count=${list.length} statusKeys=${Object.keys(statuses).length}`)
+    for (const session of list.slice(0, 20)) {
+      this.log(`[${rt.name}] session id=${session.id} title=${session.title ?? "<untitled>"} dir=${session.directory ?? "<none>"} created=${session.time?.created ?? "<none>"} updated=${session.time?.updated ?? "<none>"}`)
+    }
     let busy = false
     for (const session of list) {
       if (statuses[session.id]?.type === "busy") {
@@ -151,6 +165,7 @@ export class OpenCodeServices implements vscode.Disposable {
       }
     }
     rt.state = busy ? "busy" : "ready"
+    this.log(`[${rt.name}] refreshSessions stored workspaceId=${rt.workspaceId} snapshotCount=${this.sessions.get(rt.workspaceId)?.length ?? 0} nextState=${rt.state}`)
     this.fire()
     return list
   }

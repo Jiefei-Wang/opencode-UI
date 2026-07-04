@@ -1,4 +1,5 @@
 import type { OpenCodeClient } from "./opencodeTypes"
+import { normalizeWorkspacePath } from "./workspaceRuntime"
 
 export async function createClient(url: string, dir: string): Promise<OpenCodeClient> {
   return {
@@ -42,7 +43,8 @@ export async function createClient(url: string, dir: string): Promise<OpenCodeCl
 }
 
 function withDirectory(dir: string, input?: Record<string, unknown>) {
-  return { directory: dir, ...(input ?? {}) }
+  const next = { directory: dir, ...(input ?? {}) }
+  return { ...next, directory: typeof next.directory === "string" ? normalizeWorkspacePath(next.directory) : next.directory }
 }
 
 async function post<T = unknown>(baseUrl: string, path: string, body?: Record<string, unknown>): Promise<{ data?: T }> {

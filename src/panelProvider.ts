@@ -8,11 +8,21 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
   private readonly eventSub: vscode.Disposable
   private viewSub?: vscode.Disposable
 
+  /**
+   * Creates the panel provider and subscribes it to service state/event changes.
+   * Input: VS Code extension context and the OpenCode service facade.
+   * Return: a provider instance; constructors do not return explicit values.
+   */
   constructor(private ctx: vscode.ExtensionContext, private services: OpenCodeServices) {
     this.changeSub = this.services.onDidChange(() => this.postState())
     this.eventSub = this.services.onDidEvent(({ workspaceId, event }) => this.postEvent(workspaceId, event))
   }
 
+  /**
+   * Initializes the VS Code webview when the OpenCode side panel is shown.
+   * Input: the webview view created by VS Code.
+   * Return: void; it configures the webview, wires message handling, and posts initial state.
+   */
   resolveWebviewView(view: vscode.WebviewView) {
     this.view = view
     view.webview.options = { enableScripts: true }
@@ -23,12 +33,22 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     void this.refreshPanelState()
   }
 
+  /**
+   * Releases event subscriptions owned by the panel provider.
+   * Input: none.
+   * Return: void.
+   */
   dispose() {
     this.changeSub.dispose()
     this.eventSub.dispose()
     this.viewSub?.dispose()
   }
 
+  /**
+   * Handles messages sent from the webview UI to the extension host.
+   * Input: a message object posted by the webview script.
+   * Return: a promise that resolves after the requested command/service action completes.
+   */
   private async handleMessage(msg: any) {
     try {
       switch (msg?.type) {
@@ -107,19 +127,39 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     }
   }
 
+  /**
+   * Sends the latest workspace snapshot to the webview.
+   * Input: none; the snapshot is read from OpenCodeServices.
+   * Return: void.
+   */
   private postState() {
     const workspaces = this.services.snapshot()
     void this.view?.webview.postMessage({ type: "state", workspaces })
   }
 
+  /**
+   * Sends a transient status or error notice to the webview.
+   * Input: notice level and display text.
+   * Return: void.
+   */
   private postNotice(level: "sent" | "error", text: string) {
     void this.view?.webview.postMessage({ type: "notice", level, text })
   }
 
+  /**
+   * Forwards an OpenCode session event to the webview.
+   * Input: workspace id and raw OpenCode event payload.
+   * Return: void.
+   */
   private postEvent(workspaceId: string, event: any) {
     void this.view?.webview.postMessage({ type: "event", workspaceId, event })
   }
 
+  /**
+   * Refreshes current OpenCode data and then republishes panel state.
+   * Input: none.
+   * Return: a promise that resolves after refresh/posting finishes.
+   */
   private async refreshPanelState() {
     this.postNotice("sent", "Refreshing OpenCode sessions...")
     try {
@@ -131,6 +171,11 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     }
   }
 
+  /**
+   * Builds the complete HTML, CSS, and client-side script for the webview.
+   * Input: the VS Code webview used for CSP source values.
+   * Return: an HTML document string.
+   */
   private html(webview: vscode.Webview) {
     const nonce = randomBytes(16).toString("base64")
     const csp = `default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';`
@@ -238,6 +283,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     const messageRoles = new Map();
     const partTypes = new Map();
 
+    // Meaning: receive state, notice, and OpenCode event messages from the extension host.
+    // Input: browser message event.
+    // Return: undefined.
     window.addEventListener('message', event => {
       if (event.data?.type === 'state') {
         workspaces = event.data.workspaces || [];
@@ -263,13 +311,27 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       }
     });
 
+    // Meaning: send a typed command from the webview to the extension host.
+    // Input: message type plus optional payload object.
+    // Return: undefined.
     function post(type, data = {}) { vscode.postMessage({ type, ...data }); }
+
+    // Meaning: persist the current webview UI state through VS Code's webview state API.
+    // Input: none; reads current module variables and prompt DOM value.
+    // Return: undefined.
     function save() {
       const prompt = document.getElementById('prompt');
       if (prompt) draft = prompt.value;
       vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, selectedAgent, selectedModel });
     }
+    // Meaning: HTML-escape dynamic text before injecting it into markup.
+    // Input: any value that should be rendered as text.
+    // Return: escaped string safe for HTML insertion.
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+
+    // Meaning: convert workspace runtime state into short human-readable status text.
+    // Input: current workspace snapshot or undefined.
+    // Return: status string for the top bar.
     function statusText(ws) {
       if (!ws) return 'Open a folder to start';
       if (ws.error) return 'Needs attention';
@@ -279,6 +341,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (ws.state === 'busy') return 'Working';
       return ws.state || 'Ready';
     }
+    // Meaning: show workspace errors in the chat area when they become relevant.
+    // Input: none; reads the first workspace and current messages.
+    // Return: undefined.
     function surfaceWorkspaceError() {
       const ws = workspaces[0];
       if (!ws?.error) return;
@@ -288,6 +353,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
         appendNotice(ws.error, 'error');
       }
     }
+    // Meaning: keep the local active session id aligned with service state and clear stale chat UI on session changes.
+    // Input: current workspace snapshot or undefined.
+    // Return: undefined.
     function syncActiveSession(ws) {
       const nextSessionId = ws?.activeSessionId || '';
       if (nextSessionId && activeSessionId && nextSessionId !== activeSessionId) {
@@ -298,6 +366,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       }
       activeSessionId = nextSessionId;
     }
+    // Meaning: ask the extension host to load sessions once a ready workspace has no sessions in state.
+    // Input: current workspace snapshot or undefined.
+    // Return: undefined.
     function requestSessionRefresh(ws) {
       if (!ws || ws.state !== 'ready') return;
       if ((ws.sessions || []).length) { sessionRefreshWorkspaceId = ''; return; }
@@ -305,6 +376,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       sessionRefreshWorkspaceId = ws.workspaceId;
       post('refreshSessions', { workspaceId: ws.workspaceId });
     }
+    // Meaning: capture focus, draft, selection, and menu scroll before re-rendering.
+    // Input: none; reads the DOM.
+    // Return: object describing UI state to restore after render.
     function captureRenderState() {
       const prompt = document.getElementById('prompt');
       const menuList = document.querySelector('.menu-list');
@@ -318,6 +392,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
         menuScrollTop: typeof menuList?.scrollTop === 'number' ? menuList.scrollTop : null,
       };
     }
+    // Meaning: restore prompt focus/selection and menu scroll after replacing DOM markup.
+    // Input: state object returned by captureRenderState.
+    // Return: undefined.
     function restoreRenderState(state) {
       const prompt = document.getElementById('prompt');
       if (prompt) {
@@ -334,6 +411,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
         menuList.scrollTop = state.menuScrollTop;
       }
     }
+    // Meaning: render the entire panel UI from current in-memory state.
+    // Input: none; reads state variables and writes to #app.
+    // Return: undefined.
     function render() {
       const app = document.getElementById('app');
       const renderState = captureRenderState();
@@ -362,21 +442,33 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
           </footer>
         </div>\`;
       const prompt = document.getElementById('prompt');
+      // Meaning: submit the prompt on Ctrl/Cmd+Enter while preserving Enter for new lines.
+      // Input: keyboard event from the prompt textarea.
+      // Return: undefined.
       prompt?.addEventListener('keydown', event => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendPrompt(); }
       });
       restoreRenderState(renderState);
       app.querySelector('.messages')?.scrollTo(0, app.querySelector('.messages').scrollHeight);
     }
+    // Meaning: render the empty-state prompt shown before there are messages.
+    // Input: current workspace snapshot or undefined.
+    // Return: HTML string.
     function renderEmpty(ws) {
       return '<section class="empty"><div class="empty-title">How can I help?</div><div>' + (ws ? 'Ask OpenCode to work in ' + esc(ws.name || 'this workspace') + '.' : 'Open a workspace to start.') + '</div></section>';
     }
+    // Meaning: render the header area, switching between startup and compact session views.
+    // Input: current workspace snapshot and whether the user has sent a prompt.
+    // Return: HTML string.
     function renderTopBar(ws, hasPrompted) {
       if (hasPrompted) {
         return '<section class="topbar compact"><header class="header"><button class="session-summary" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '"><span class="name">' + esc(currentSessionLabel(ws)) + '</span><span class="status">Click to switch sessions</span></button></header>' + (sessionListOpen ? renderSessionHistory(ws, true, 'History sessions') : '') + '</section>';
       }
       return '<section class="topbar startup"><header class="header"><div class="workspace"><div class="startup-title">Recent sessions</div><div class="status">' + esc(statusText(ws)) + (ws?.dir ? ' · ' + esc(ws.dir) : '') + '</div></div><div class="toolbar"><button class="subtle" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '">' + (sessionListOpen ? 'Collapse' : 'Show all') + '</button></div></header>' + renderSessionHistory(ws, sessionListOpen, 'Recent sessions') + '</section>';
     }
+    // Meaning: render recent/history session buttons for the active workspace.
+    // Input: workspace snapshot, expanded flag, and section title.
+    // Return: HTML string.
     function renderSessionHistory(ws, expanded, title) {
       if (!ws) return '<section class="history"><div class="history-list"><button disabled>Open a workspace to see sessions</button></div></section>';
       const sessions = sortedSessions(ws);
@@ -385,39 +477,74 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       const more = sessions.length > visible.length ? '<button data-toggle-history="true">Show ' + (sessions.length - visible.length) + ' more sessions</button>' : '';
       return '<section class="history ' + (expanded ? 'expanded' : 'collapsed') + '"><div class="history-title">' + esc(title) + '</div><div class="history-list">' + visible.map(session => renderSessionButton(ws, session)).join('') + more + '</div></section>';
     }
+    // Meaning: render one selectable session row.
+    // Input: workspace snapshot and session object.
+    // Return: HTML string.
     function renderSessionButton(ws, session) {
       const active = session.id === ws.activeSessionId ? ' active' : '';
       return '<button class="' + active + '" data-session-id="' + esc(session.id) + '" data-workspace-id="' + esc(ws.workspaceId) + '">' + esc(session.title || session.id) + '<span class="meta">' + esc(session.id) + '</span></button>';
     }
+    // Meaning: order workspace sessions from newest to oldest.
+    // Input: workspace snapshot or undefined.
+    // Return: sorted session array copy.
     function sortedSessions(ws) {
       return (ws?.sessions || []).slice().sort((a, b) => ((b.time?.updated || b.time?.created || 0) - (a.time?.updated || a.time?.created || 0)));
     }
+    // Meaning: find the display label for the active session.
+    // Input: workspace snapshot or undefined.
+    // Return: session title/id fallback string.
     function currentSessionLabel(ws) {
       if (!ws?.activeSessionId) return 'Current session';
       const session = sortedSessions(ws).find(item => item.id === ws.activeSessionId);
       return session?.title || ws.activeSessionId;
     }
+    // Meaning: render all current chat messages.
+    // Input: none; reads messages array.
+    // Return: HTML string.
     function renderMessages() {
       return messages.map(msg => '<div class="message ' + esc(msg.role) + '">' + renderThinking(msg) + renderBubble(msg) + '</div>').join('');
     }
+    // Meaning: render the visible text bubble for one message.
+    // Input: message object.
+    // Return: HTML string, or empty string for blank pending messages.
     function renderBubble(msg) {
       if (msg.kind === 'pending' && !msg.text) return '';
       return '<div class="bubble ' + (msg.kind === 'error' ? 'notice error' : '') + '">' + esc(msg.text) + '</div>';
     }
+    // Meaning: render collapsible reasoning/thinking content for one assistant message.
+    // Input: message object.
+    // Return: HTML string, or empty string when no thinking text exists.
     function renderThinking(msg) {
       if (!msg.thinking) return '';
       return '<details class="thinking"><summary>Thinking</summary><div class="thinking-preview">' + esc(lastThinkingLines(msg.thinking)) + '</div><div class="thinking-body">' + esc(msg.thinking) + '</div></details>';
     }
+    // Meaning: produce a short preview from the end of a thinking block.
+    // Input: thinking text.
+    // Return: up to the last three non-empty lines.
     function lastThinkingLines(text) {
       return String(text || '').split(/\\r?\\n/).filter(Boolean).slice(-3).join('\\n');
     }
+    // Meaning: render pending permission approval controls.
+    // Input: current workspace snapshot or undefined.
+    // Return: HTML string.
     function renderPermissions(ws) {
       const permissions = ws?.permissions || [];
       if (!permissions.length) return '';
       return '<div class="notice">Pending permissions</div>' + permissions.map(permission => '<div class="detail-row"><span>' + esc(permission.permission || 'Permission') + '</span><button data-permission="once" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Approve once</button><button data-permission="always" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Always</button><button data-permission="reject" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Reject</button></div>').join('');
     }
+    // Meaning: choose the label for the model picker button.
+    // Input: none; reads selectedModel.
+    // Return: button label string.
     function modelButtonLabel() { return selectedModel ? (selectedModel.name || selectedModel.label || selectedModel.modelID || 'Model') : 'Model'; }
+
+    // Meaning: choose the label for the agent picker button.
+    // Input: none; reads selectedAgent.
+    // Return: button label string.
     function agentButtonLabel() { return selectedAgent || 'Agent'; }
+
+    // Meaning: render the currently open picker menu.
+    // Input: current workspace snapshot or undefined.
+    // Return: HTML string.
     function renderMenu(ws) {
       if (!menuOpen) return '';
       if (!ws) return '<div class="menu"><div class="menu-title">Open a workspace first</div></div>';
@@ -426,6 +553,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (menuOpen === 'skill') return renderSkillMenu(ws.skills || []);
       return '';
     }
+    // Meaning: render model picker options grouped by recent models and provider.
+    // Input: model list and recent model list.
+    // Return: HTML string.
     function renderModelMenu(models, recentModels) {
       const visible = models.slice(0, 160);
       if (!visible.length) return '<div class="menu"><div class="menu-title">Models</div><div class="menu-list"><button data-menu-refresh="model">No connected provider models yet. Retry</button></div></div>';
@@ -444,17 +574,30 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       }
       return '<div class="menu"><div class="menu-list">' + sections.join('') + '</div></div>';
     }
+    // Meaning: render one model picker button.
+    // Input: model pick object.
+    // Return: HTML string.
     function renderModelButton(model) { return '<button data-select-model="true" data-provider-id="' + esc(model.providerID) + '" data-model-id="' + esc(model.modelID) + '" data-name="' + esc(model.name || model.label || model.modelID) + '" data-label="' + esc(model.label || model.name || '') + '">' + esc(model.name || model.label || model.modelID) + '<span class="meta">' + esc(model.providerID + '/' + model.modelID) + '</span></button>'; }
+
+    // Meaning: render agent picker options.
+    // Input: agent list.
+    // Return: HTML string.
     function renderAgentMenu(agents) {
       const visible = agents.filter(agent => !agent.hidden).slice(0, 80);
       const none = '<button data-clear-agent="true">None<span class="meta">Use OpenCode default agent</span></button>';
       const agentButtons = visible.length ? visible.map(agent => '<button data-select-agent="' + esc(agent.name) + '">@' + esc(agent.name) + '<span class="meta">' + esc(agent.mode || 'agent') + '</span></button>').join('') : '<button data-menu-refresh="agent">No agents yet. Retry</button>';
       return '<div class="menu"><div class="menu-title">Choose agent</div><div class="menu-list">' + none + agentButtons + '</div></div>';
     }
+    // Meaning: render skill insertion options.
+    // Input: skill list.
+    // Return: HTML string.
     function renderSkillMenu(skills) {
       const visible = skills.slice(0, 80);
       return '<div class="menu"><div class="menu-title">Insert skill</div><div class="menu-list">' + (visible.length ? visible.map(skill => '<button data-insert-skill="' + esc(skill.triggerText || '/' + skill.name + ' ') + '">' + esc(skill.name) + '<span class="meta">' + esc(skill.description || skill.source || 'skill') + '</span></button>').join('') : '<button data-menu-refresh="skill">No skills yet. Retry</button>') + '</div></div>';
     }
+    // Meaning: submit the current prompt to the extension host and add optimistic chat rows.
+    // Input: none; reads the prompt textarea and selected options.
+    // Return: undefined.
     function sendPrompt() {
       const el = document.getElementById('prompt');
       const prompt = el?.value.trim();
@@ -468,6 +611,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       render();
       post('sendPrompt', { prompt, agent: selectedAgent || undefined, model: selectedModel || undefined });
     }
+    // Meaning: apply streamed OpenCode session events to the local chat transcript.
+    // Input: workspace id and raw OpenCode event object from the extension host.
+    // Return: undefined.
     function handleOpenCodeEvent(workspaceId, event) {
       const props = event?.properties || {};
       const part = props.part || {};
@@ -498,44 +644,71 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (event.type === 'session.status' && props.status?.type && props.status.type !== 'busy') finishPending();
       if (event.type === 'session.idle') finishPending();
     }
+    // Meaning: append incremental assistant text to the latest assistant message.
+    // Input: text delta.
+    // Return: undefined.
     function appendAssistant(text) {
       const msg = lastAssistant();
       if (msg) { msg.text += text; msg.kind = undefined; }
       else messages.push({ role: 'assistant', text });
     }
+    // Meaning: append incremental reasoning text to the latest assistant message.
+    // Input: thinking text delta.
+    // Return: undefined.
     function appendThinking(text) {
       const msg = lastAssistant();
       if (msg) { msg.thinking = (msg.thinking || '') + text; }
       else messages.push({ role: 'assistant', text: '', thinking: text });
     }
+    // Meaning: replace or initialize the latest assistant response with complete text.
+    // Input: full assistant text.
+    // Return: undefined.
     function setAssistant(text) {
       const msg = lastAssistant();
       if (msg && (!msg.text || text.startsWith(msg.text))) { msg.text = text; msg.kind = undefined; }
       else if (!msg) messages.push({ role: 'assistant', text });
     }
+    // Meaning: replace or initialize the latest assistant reasoning text.
+    // Input: full thinking text.
+    // Return: undefined.
     function setThinking(text) {
       const msg = lastAssistant();
       if (msg) { msg.thinking = text; }
       else messages.push({ role: 'assistant', text: '', thinking: text });
     }
+    // Meaning: add a system notice as an assistant-style message.
+    // Input: notice text and optional kind, such as sent or error.
+    // Return: undefined.
     function appendNotice(text, kind = 'sent') {
       const msg = lastAssistant();
       if (msg && msg.kind === 'pending' && !msg.text) { msg.text = text; msg.kind = kind; return; }
       messages.push({ role: 'assistant', text, kind });
     }
+    // Meaning: resolve an empty pending assistant placeholder when a run finishes without text.
+    // Input: none; reads the latest assistant message.
+    // Return: undefined.
     function finishPending() {
       const msg = lastAssistant();
       if (msg?.kind === 'pending' && !msg.text) { msg.text = 'No response text was returned.'; msg.kind = 'sent'; }
     }
+    // Meaning: find the most recent assistant message in the transcript.
+    // Input: none; reads messages array.
+    // Return: message object or undefined.
     function lastAssistant() {
       for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'assistant') return messages[i];
       return undefined;
     }
+    // Meaning: determine whether a streamed event belongs to an assistant message.
+    // Input: OpenCode event properties object.
+    // Return: boolean.
     function isAssistantMessageEvent(props) {
       const part = props.part || {};
       const messageID = props.messageID || part.messageID;
       return Boolean(messageID && messageRoles.get(messageID) === 'assistant');
     }
+    // Meaning: insert text into the prompt textarea and persist the draft.
+    // Input: text to append.
+    // Return: undefined.
     function insert(text) {
       const el = document.getElementById('prompt');
       if (!el) return;
@@ -544,6 +717,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       save();
       el.focus();
     }
+    // Meaning: handle all button and menu clicks through event delegation.
+    // Input: browser click event.
+    // Return: undefined.
     document.addEventListener('click', event => {
       const toggleHistory = event.target?.closest?.('[data-toggle-history]');
       if (toggleHistory && !event.target?.closest?.('[data-session-id]')) { sessionListOpen = !sessionListOpen; save(); render(); return; }
@@ -560,6 +736,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
       if (button.dataset.sessionId) { messages = []; sessionListOpen = false; save(); render(); post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
       if (button.dataset.permission) post('permission', { workspaceId: button.dataset.workspaceId, requestID: button.dataset.requestId, reply: button.dataset.permission });
     });
+    // Meaning: keep the saved draft synchronized while the user types.
+    // Input: browser input event.
+    // Return: undefined.
     document.addEventListener('input', event => {
       if (event.target?.id === 'prompt') { draft = event.target.value; save(); }
     });
@@ -571,12 +750,22 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
   }
 }
 
+/**
+ * Checks whether a webview message is a valid permission reply.
+ * Input: unknown message payload from the webview.
+ * Return: true when the payload has workspace id, request id, and an accepted reply value.
+ */
 function isPermissionMessage(msg: any): msg is { workspaceId: string; requestID: string; reply: "once" | "always" | "reject" } {
   return typeof msg?.workspaceId === "string"
     && typeof msg?.requestID === "string"
     && (msg.reply === "once" || msg.reply === "always" || msg.reply === "reject")
 }
 
+/**
+ * Checks whether a value contains the minimum fields needed to select a model.
+ * Input: unknown value from persisted state or webview message data.
+ * Return: true when providerID, modelID, and label are strings.
+ */
 function isModelPick(value: any): value is { providerID: string; modelID: string; label: string } {
   return typeof value?.providerID === "string"
     && typeof value?.modelID === "string"

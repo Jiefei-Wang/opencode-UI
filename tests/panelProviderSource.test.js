@@ -2,7 +2,10 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const test = require("node:test")
 
-const source = fs.readFileSync("src/panelProvider.ts", "utf8")
+const source = [
+  fs.readFileSync("src/panelProvider.ts", "utf8"),
+  fs.readFileSync("media/panel.html", "utf8"),
+].join("\n")
 
 test("panel uses CSP-safe delegated click handlers instead of inline onclick", () => {
   assert.doesNotMatch(source, /onclick=/)
@@ -152,9 +155,9 @@ test("panel renders thinking separately in a collapsed expandable disclosure", (
 })
 
 test("panel escapes thinking preview line splitting for the embedded webview script", () => {
-  assert.match(source, /split\(\/\\\\r\?\\\\n\/\)/)
-  assert.match(source, /join\('\\\\n'\)/)
-  assert.doesNotMatch(source, /split\(\/\\r\?\\n\/\)\.filter\(Boolean\)\.slice\(-3\)\.join\('\\n'\)/)
+  assert.match(source, /split\(\/\\r\?\\n\/\)/)
+  assert.match(source, /join\('\\n'\)/)
+  assert.doesNotMatch(source, /split\(\/\\\\r\?\\\\n\/\)/)
 })
 
 test("panel keeps composer usable in narrow panes and surfaces runtime errors", () => {

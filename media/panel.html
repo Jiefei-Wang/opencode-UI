@@ -99,6 +99,7 @@
     let activeSessionId = persisted.activeSessionId || '';
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
+    let userSelected = persisted.userSelected || false;
     const messageRoles = new Map();
     const partTypes = new Map();
 
@@ -141,7 +142,7 @@
     function save() {
       const prompt = document.getElementById('prompt');
       if (prompt) draft = prompt.value;
-      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, selectedAgent, selectedModel });
+      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, selectedAgent, selectedModel, userSelected });
     }
     // Meaning: HTML-escape dynamic text before injecting it into markup.
     // Input: any value that should be rendered as text.
@@ -238,10 +239,9 @@
       const renderState = captureRenderState();
       draft = renderState.draft;
       const ws = workspaces[0];
-      const hasPrompted = messages.some(msg => msg.role === 'user');
       app.innerHTML = `
         <div class="shell">
-          ${renderTopBar(ws, hasPrompted)}
+          ${renderTopBar(ws)}
           <main class="messages">
             ${messages.length ? renderMessages() : renderEmpty(ws)}
             ${renderPermissions(ws)}
@@ -276,14 +276,14 @@
     function renderEmpty(ws) {
       return '<section class="empty"><div class="empty-title">How can I help?</div><div>' + (ws ? 'Ask OpenCode to work in ' + esc(ws.name || 'this workspace') + '.' : 'Open a workspace to start.') + '</div></section>';
     }
-    // Meaning: render the header area, switching between startup and compact session views.
-    // Input: current workspace snapshot and whether the user has sent a prompt.
+    // Meaning: render the header area, switching between selected session view and full session list.
+    // Input: current workspace snapshot.
     // Return: HTML string.
-    function renderTopBar(ws, hasPrompted) {
-      if (hasPrompted) {
-        return '<section class="topbar compact"><header class="header"><button class="session-summary" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '"><span class="name">' + esc(currentSessionLabel(ws)) + '</span><span class="status">Click to switch sessions</span></button></header>' + (sessionListOpen ? renderSessionHistory(ws, true, 'History sessions') : '') + '</section>';
+    function renderTopBar(ws) {
+      if (userSelected) {
+        return '<section class="topbar compact"><header class="header"><button class="subtle" data-back-session="true" aria-label="Back to sessions" style="font-size:16px;padding:3px 8px;">&#8592;</button><div class="session-summary"><span class="name">' + esc(currentSessionLabel(ws)) + '</span></div></header></section>';
       }
-      return '<section class="topbar startup"><header class="header"><div class="workspace"><div class="startup-title">Recent sessions</div><div class="status">' + esc(statusText(ws)) + (ws?.dir ? ' · ' + esc(ws.dir) : '') + '</div></div><div class="toolbar"><button class="subtle" data-toggle-history="true" aria-expanded="' + (sessionListOpen ? 'true' : 'false') + '">' + (sessionListOpen ? 'Collapse' : 'Show all') + '</button></div></header>' + renderSessionHistory(ws, sessionListOpen, 'Recent sessions') + '</section>';
+      return '<section class="topbar startup">' + renderSessionHistory(ws, true, 'Sessions') + '</section>';
     }
     // Meaning: render recent/history session buttons for the active workspace.
     // Input: workspace snapshot, expanded flag, and section title.
@@ -425,6 +425,7 @@
       messages.push({ role: 'assistant', text: '', kind: 'pending' });
       draft = '';
       sessionListOpen = false;
+      userSelected = true;
       el.value = '';
       save();
       render();
@@ -552,7 +553,9 @@
       if (button.dataset.selectAgent) { selectedAgent = button.dataset.selectAgent; menuOpen = ''; save(); render(); }
       if (button.dataset.clearAgent) { selectedAgent = ''; menuOpen = ''; save(); render(); }
       if (button.dataset.selectModel) { selectedModel = { providerID: button.dataset.providerId, modelID: button.dataset.modelId, name: button.dataset.name || button.dataset.modelId, label: button.dataset.label || button.dataset.name || button.dataset.modelId }; menuOpen = ''; save(); render(); post('setModel', { model: selectedModel }); }
-      if (button.dataset.sessionId) { messages = []; sessionListOpen = false; save(); render(); post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
+      if (button.dataset.newSession) { userSelected = true; messages = []; messageRoles.clear(); partTypes.clear(); save(); render(); post('newSession'); }
+      if (button.dataset.backSession) { userSelected = false; messages = []; messageRoles.clear(); partTypes.clear(); save(); render(); }
+      if (button.dataset.sessionId) { userSelected = true; messages = []; sessionListOpen = false; save(); render(); post('selectSession', { workspaceId: button.dataset.workspaceId, sessionID: button.dataset.sessionId }); }
       if (button.dataset.permission) post('permission', { workspaceId: button.dataset.workspaceId, requestID: button.dataset.requestId, reply: button.dataset.permission });
     });
     // Meaning: keep the saved draft synchronized while the user types.

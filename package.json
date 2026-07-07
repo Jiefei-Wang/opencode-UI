@@ -139,6 +139,11 @@
         "title": "OpenCode: New Session",
         "icon": "$(add)"
       },
+      { "command": "opencode.status.ready",    "title": "Ready" },
+      { "command": "opencode.status.busy",     "title": "Working..." },
+      { "command": "opencode.status.starting", "title": "Starting..." },
+      { "command": "opencode.status.stopped",  "title": "Stopped" },
+      { "command": "opencode.status.error",    "title": "Error" },
       {
         "command": "opencode.resumeSession",
         "title": "OpenCode: Resume Session",
@@ -219,6 +224,11 @@
     ],
     "menus": {
       "view/title": [
+        { "command": "opencode.status.ready",    "when": "view == opencode.secondaryPanel && opencode.serverState == 'ready'",    "group": "navigation@0" },
+        { "command": "opencode.status.busy",     "when": "view == opencode.secondaryPanel && opencode.serverState == 'busy'",     "group": "navigation@0" },
+        { "command": "opencode.status.starting", "when": "view == opencode.secondaryPanel && opencode.serverState == 'starting'", "group": "navigation@0" },
+        { "command": "opencode.status.stopped",  "when": "view == opencode.secondaryPanel && opencode.serverState == 'stopped'",  "group": "navigation@0" },
+        { "command": "opencode.status.error",    "when": "view == opencode.secondaryPanel && opencode.serverState == 'error'",    "group": "navigation@0" },
         {
           "command": "opencode.newSession",
           "when": "view == opencode.secondaryPanel",

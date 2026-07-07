@@ -15,6 +15,10 @@ export function registerCommands(ctx: vscode.ExtensionContext, mgr: WorkspaceMan
     await vscode.commands.executeCommand("opencode.secondaryPanel.focus")
   })
 
+  for (const id of ["opencode.status.ready", "opencode.status.busy", "opencode.status.starting", "opencode.status.stopped", "opencode.status.error"]) {
+    reg(id, () => undefined)
+  }
+
   reg("opencode.newSession", async () => {
     const rt = await services.ensureReady()
     const session = await services.newSession(rt)

@@ -14,7 +14,11 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
    * Input: VS Code extension context and the OpenCode service facade.
    * Return: a provider instance; constructors do not return explicit values.
    */
-  constructor(private ctx: vscode.ExtensionContext, private services: OpenCodeServices) {
+  constructor(
+    private ctx: vscode.ExtensionContext,
+    private services: OpenCodeServices,
+    private out: vscode.OutputChannel,
+  ) {
     this.changeSub = this.services.onDidChange(() => this.postState())
     this.eventSub = this.services.onDidEvent(({ workspaceId, event }) => this.postEvent(workspaceId, event))
   }
@@ -149,6 +153,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
   private postState() {
     const workspaces = this.services.snapshot()
     void this.view?.webview.postMessage({ type: "state", workspaces })
+    const ws = workspaces[0]
+    const serverState = !ws ? "" : ws.error ? "error" : ws.state ?? ""
+    void vscode.commands.executeCommand("setContext", "opencode.serverState", serverState)
   }
 
   /**
@@ -175,11 +182,15 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
    * Return: a promise that resolves after refresh/posting finishes.
    */
   private async refreshPanelState() {
-    this.postNotice("sent", "Refreshing OpenCode sessions...")
+    const message = "Refreshing OpenCode sessions..."
+    // this.postNotice("sent", message)
+    this.out.appendLine(`[panel] ${message}`)
     try {
       await this.services.refreshCurrent()
     } catch (err) {
-      this.postNotice("error", err instanceof Error ? err.message : String(err))
+      const errorText = err instanceof Error ? err.message : String(err)
+    //   this.postNotice("error", errorText)
+      this.out.appendLine(`[panel] refresh failed: ${errorText}`)
     } finally {
       this.postState()
     }

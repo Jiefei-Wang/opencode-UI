@@ -25,7 +25,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(status)
 
   if (richPanelEnabled()) {
-    const panel = new OpenCodePanelProvider(ctx, services)
+    const panel = new OpenCodePanelProvider(ctx, services, out)
     ctx.subscriptions.push(
       panel,
       vscode.window.registerWebviewViewProvider("opencode.secondaryPanel", panel),

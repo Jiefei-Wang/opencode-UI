@@ -231,13 +231,15 @@
       sessionRefreshWorkspaceId = ws.workspaceId;
       post('refreshSessions', { workspaceId: ws.workspaceId });
     }
-    // Meaning: capture focus, draft, selection, and menu scroll before re-rendering.
+    // Meaning: capture focus, draft, selection, menu scroll, and scroll position before re-rendering.
     // Input: none; reads the DOM.
     // Return: object describing UI state to restore after render.
     function captureRenderState() {
       const prompt = document.getElementById('prompt');
       const menuList = document.querySelector('.menu-list');
       const activePrompt = document.activeElement?.id === 'prompt' ? prompt : null;
+      const messagesEl = document.querySelector('.messages');
+      const wasAtBottom = messagesEl ? (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) < 5 : true;
       return {
         draft: prompt?.value ?? draft,
         promptSelectionStart: typeof activePrompt?.selectionStart === 'number' ? activePrompt.selectionStart : null,
@@ -245,9 +247,11 @@
         restorePromptFocus: Boolean(activePrompt),
         menuOpen,
         menuScrollTop: typeof menuList?.scrollTop === 'number' ? menuList.scrollTop : null,
+        wasAtBottom,
+        messagesScrollTop: messagesEl?.scrollTop ?? 0,
       };
     }
-    // Meaning: restore prompt focus/selection and menu scroll after replacing DOM markup.
+    // Meaning: restore prompt focus/selection, menu scroll, and messages scroll after replacing DOM markup.
     // Input: state object returned by captureRenderState.
     // Return: undefined.
     function restoreRenderState(state) {
@@ -264,6 +268,14 @@
       const menuList = document.querySelector('.menu-list');
       if (menuOpen === state.menuOpen && menuList && typeof state.menuScrollTop === 'number') {
         menuList.scrollTop = state.menuScrollTop;
+      }
+      const messagesEl = document.querySelector('.messages');
+      if (messagesEl) {
+        if (state.wasAtBottom) {
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        } else {
+          messagesEl.scrollTop = state.messagesScrollTop;
+        }
       }
     }
     // Meaning: render the entire panel UI from current in-memory state.
@@ -305,7 +317,6 @@
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendPrompt(); }
       });
       restoreRenderState(renderState);
-      app.querySelector('.messages')?.scrollTo(0, app.querySelector('.messages').scrollHeight);
     }
     // Meaning: render the empty-state prompt shown before there are messages.
     // Input: current workspace snapshot or undefined.

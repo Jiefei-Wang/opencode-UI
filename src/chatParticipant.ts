@@ -1,4 +1,5 @@
 import * as vscode from "vscode"
+import { collectEditorContext, collectPromptReferenceContexts, composePromptText } from "./promptContext"
 import { showThinking } from "./settings"
 import { OpenCodeServices } from "./services"
 
@@ -17,11 +18,14 @@ export function registerChatParticipant(ctx: vscode.ExtensionContext, services: 
       stream.progress("Starting OpenCode...")
       const rt = await services.ensureReady()
       const session = await services.activeOrNewSession(rt)
+      const referenceContexts = await collectPromptReferenceContexts(request.references)
+      const liveContexts = collectEditorContext().items
+      const composedPrompt = composePromptText(prompt, [...referenceContexts, ...liveContexts])
       const eventCts = new vscode.CancellationTokenSource()
       const cancelSub = token.onCancellationRequested(() => eventCts.cancel())
       const events = streamSessionEvents(services, rt.workspaceId, session.id, stream, eventCts.token)
       try {
-        await services.sendPromptToSession(rt, session, prompt)
+        await services.sendPromptToSession(rt, session, composedPrompt)
         stream.progress(`Using session ${session.id}`)
 
         await events

@@ -57,11 +57,29 @@ test("panel sends selected model and agent with prompts", () => {
   assert.match(source, /selectedModel = persisted\.selectedModel/)
   assert.match(source, /selectedModel = ws\?\.selectedModel \|\| null/)
   assert.match(source, /selectedAgent = persisted\.selectedAgent/)
-  assert.match(source, /post\('sendPrompt', \{ prompt, agent: selectedAgent/)
+  assert.match(source, /post\('sendPrompt', \{ prompt, contextItems: pinnedContextItems, agent: selectedAgent/)
   assert.match(source, /post\('setModel'/)
   assert.match(source, /modelButtonLabel/)
   assert.match(source, /agentButtonLabel/)
   assert.match(source, /function isModelPick/)
+})
+
+test("panel renders and manages live plus pinned context chips", () => {
+  assert.match(source, /let liveContext = persisted\.liveContext/)
+  assert.match(source, /let pinnedContextItems = persisted\.pinnedContextItems/)
+  assert.match(source, /if \(event\.data\?\.type === 'contextState'\)/)
+  assert.match(source, /if \(event\.data\?\.type === 'contextAdded'\)/)
+  assert.match(source, /function renderContextBar\(\)/)
+  assert.match(source, /function renderContextChip\(item\)/)
+  assert.match(source, /function renderContextMenu\(\)/)
+  assert.match(source, /data-menu="context"/)
+  assert.match(source, /data-add-context="file"/)
+  assert.match(source, /data-remove-context=/)
+  assert.match(source, /data-clear-context=/)
+})
+
+test("panel context bar omits the title label", () => {
+  assert.doesNotMatch(source, /<div class="context-bar-title">Context<\/div>/)
 })
 
 test("panel agent picker mirrors model label and can clear selection", () => {
@@ -122,10 +140,11 @@ test("panel ready refreshes sessions before rendering history", () => {
 })
 
 test("panel compact session bar only expands history after prompting", () => {
-  assert.match(source, /function renderTopBar\(ws, hasPrompted\)/)
+  assert.match(source, /function renderTopBar\(ws\)/)
   assert.match(source, /currentSessionLabel/)
+  assert.match(source, /<section class="topbar compact">/)
   assert.match(source, /<span class="name">/)
-  assert.match(source, /<span class="status">Click to switch sessions<\/span>/)
+  assert.match(source, /data-back-session="true"/)
   assert.doesNotMatch(source, /data-session-actions="true"/)
   assert.doesNotMatch(source, /function renderSessionActions/)
 })

@@ -57,6 +57,20 @@
     .menu button { width: 100%; display: block; padding: 7px 8px; border-radius: 0; text-align: left; }
     .menu button:hover { background: var(--vscode-list-hoverBackground); }
     .menu .meta { display: block; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .context-bar { display: grid; gap: 6px; margin-bottom: 8px; }
+    .context-bar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+    .context-bar-title { color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .context-bar-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+    .context-bar-actions button { padding: 3px 7px; color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-panel-border); }
+    .context-list { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+    .context-empty { color: var(--vscode-descriptionForeground); font-size: 12px; }
+    .context-chip { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background)); }
+    .context-chip[data-source="live"] { border-style: dashed; }
+    .context-chip-main { min-width: 0; display: grid; gap: 1px; }
+    .context-chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+    .context-chip-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 11px; }
+    .context-chip-meta { color: var(--vscode-descriptionForeground); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .context-chip button { padding: 0 2px; line-height: 1; color: var(--vscode-descriptionForeground); }
     .composer-wrap { min-width: 0; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border); overflow: hidden; }
     .composer { min-width: 0; max-width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 10px; background: var(--vscode-input-background); overflow: visible; }
     .composer:focus-within { border-color: var(--vscode-focusBorder); }
@@ -100,6 +114,8 @@
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
     let userSelected = persisted.userSelected || false;
+    let liveContext = persisted.liveContext || { items: [], canAddActiveFile: false, canAddSelection: false, canAddFile: false, canAddFolder: false };
+    let pinnedContextItems = persisted.pinnedContextItems || [];
     const messageRoles = new Map();
     const partTypes = new Map();
 
@@ -129,6 +145,21 @@
         save();
         render();
       }
+      if (event.data?.type === 'contextState') {
+        liveContext = event.data.context || { items: [], canAddActiveFile: false, canAddSelection: false, canAddFile: false, canAddFolder: false };
+        save();
+        render();
+      }
+      if (event.data?.type === 'contextAdded') {
+        const nextItems = Array.isArray(event.data.items) ? event.data.items : [];
+        for (const item of nextItems) {
+          if (!item?.id) continue;
+          if (pinnedContextItems.some(existing => existing.id === item.id)) continue;
+          pinnedContextItems.push(item);
+        }
+        save();
+        render();
+      }
     });
 
     // Meaning: send a typed command from the webview to the extension host.
@@ -142,7 +173,7 @@
     function save() {
       const prompt = document.getElementById('prompt');
       if (prompt) draft = prompt.value;
-      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, selectedAgent, selectedModel, userSelected });
+      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, selectedAgent, selectedModel, userSelected, pinnedContextItems, liveContext });
     }
     // Meaning: HTML-escape dynamic text before injecting it into markup.
     // Input: any value that should be rendered as text.
@@ -248,10 +279,12 @@
           </main>
           <footer class="composer-wrap">
             <div class="composer">
+                ${renderContextBar()}
               <div class="composer-row"><textarea id="prompt" aria-label="Prompt" placeholder="Ctrl+Enter sends. Enter adds a new line.">${esc(draft)}</textarea></div>
               ${renderMenu(ws)}
               <div class="composer-actions">
                 <div class="pickers">
+                    <button class="subtle" data-menu="context" aria-expanded="${menuOpen === 'context' ? 'true' : 'false'}">Context</button>
                   <button class="subtle" data-menu="model" aria-expanded="${menuOpen === 'model' ? 'true' : 'false'}">${esc(modelButtonLabel())}</button>
                   <button class="subtle" data-menu="agent" aria-expanded="${menuOpen === 'agent' ? 'true' : 'false'}">${esc(agentButtonLabel())}</button>
                   <button class="subtle" data-menu="skill" aria-expanded="${menuOpen === 'skill' ? 'true' : 'false'}">Skill</button>
@@ -351,6 +384,26 @@
       if (!permissions.length) return '';
       return '<div class="notice">Pending permissions</div>' + permissions.map(permission => '<div class="detail-row"><span>' + esc(permission.permission || 'Permission') + '</span><button data-permission="once" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Approve once</button><button data-permission="always" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Always</button><button data-permission="reject" data-workspace-id="' + esc(ws.workspaceId) + '" data-request-id="' + esc(permission.id) + '">Reject</button></div>').join('');
     }
+    // Meaning: render the live editor context chips and any pinned attachments above the prompt.
+    // Input: none; reads the live and pinned context arrays.
+    // Return: HTML string.
+    function renderContextBar() {
+      const liveItems = (liveContext?.items || []).filter(Boolean);
+      const pinnedItems = pinnedContextItems.filter(Boolean);
+      if (!liveItems.length && !pinnedItems.length) {
+        return '<div class="context-bar"><div class="context-bar-head"><div class="context-bar-actions"><button data-menu="context">Add</button></div></div><div class="context-empty">No context attached yet.</div></div>';
+      }
+      const items = [...liveItems, ...pinnedItems];
+      const clear = pinnedItems.length ? '<button data-clear-context="true">Clear pinned</button>' : '';
+      return '<div class="context-bar"><div class="context-bar-head"><div class="context-bar-actions"><button data-menu="context">Add</button>' + clear + '</div></div><div class="context-list">' + items.map(renderContextChip).join('') + '</div></div>';
+    }
+    // Meaning: render one context chip for either live editor context or a pinned attachment.
+    // Input: context item object.
+    // Return: HTML string.
+    function renderContextChip(item) {
+      const removable = item.removable ? '<button data-remove-context="' + esc(item.id) + '" aria-label="Remove context">×</button>' : '<span class="context-chip-meta">auto</span>';
+      return '<span class="context-chip" data-source="' + esc(item.source || 'live') + '"><span class="context-chip-main"><span class="context-chip-title">' + esc(item.title || item.kind || 'Context') + '</span>' + (item.detail ? '<span class="context-chip-detail">' + esc(item.detail) + '</span>' : '') + '</span>' + removable + '</span>';
+    }
     // Meaning: choose the label for the model picker button.
     // Input: none; reads selectedModel.
     // Return: button label string.
@@ -367,10 +420,26 @@
     function renderMenu(ws) {
       if (!menuOpen) return '';
       if (!ws) return '<div class="menu"><div class="menu-title">Open a workspace first</div></div>';
+      if (menuOpen === 'context') return renderContextMenu();
       if (menuOpen === 'model') return renderModelMenu(ws.models || [], ws.recentModels || []);
       if (menuOpen === 'agent') return renderAgentMenu(ws.agents || []);
       if (menuOpen === 'skill') return renderSkillMenu(ws.skills || []);
       return '';
+    }
+    // Meaning: render the add-context menu with live snapshot and file/folder attachment actions.
+    // Input: none; reads liveContext.
+    // Return: HTML string.
+    function renderContextMenu() {
+      const canAddActiveFile = Boolean(liveContext?.canAddActiveFile);
+      const canAddSelection = Boolean(liveContext?.canAddSelection);
+      const canAddFile = Boolean(liveContext?.canAddFile);
+      const canAddFolder = Boolean(liveContext?.canAddFolder);
+      return '<div class="menu"><div class="menu-title">Add context</div><div class="menu-list">' +
+        '<button data-add-context="active-file"' + (canAddActiveFile ? '' : ' disabled') + '>Current file snapshot<span class="meta">Low priority, includes cursor and nearby code</span></button>' +
+        '<button data-add-context="selection"' + (canAddSelection ? '' : ' disabled') + '>Selected text snapshot<span class="meta">High priority, includes selection and nearby lines</span></button>' +
+        '<button data-add-context="file"' + (canAddFile ? '' : ' disabled') + '>Add file...<span class="meta">Very high priority, token-limited chunks</span></button>' +
+        '<button data-add-context="folder"' + (canAddFolder ? '' : ' disabled') + '>Add folder...<span class="meta">Very high priority, tree and retrieved snippets</span></button>' +
+        '</div></div>';
     }
     // Meaning: render model picker options grouped by recent models and provider.
     // Input: model list and recent model list.
@@ -429,7 +498,7 @@
       el.value = '';
       save();
       render();
-      post('sendPrompt', { prompt, agent: selectedAgent || undefined, model: selectedModel || undefined });
+      post('sendPrompt', { prompt, contextItems: pinnedContextItems, agent: selectedAgent || undefined, model: selectedModel || undefined });
     }
     // Meaning: apply streamed OpenCode session events to the local chat transcript.
     // Input: workspace id and raw OpenCode event object from the extension host.
@@ -550,6 +619,9 @@
       if (button.dataset.insertSkill !== undefined) { insert(button.dataset.insertSkill); menuOpen = ''; save(); render(); }
       if (button.dataset.menu) { menuOpen = menuOpen === button.dataset.menu ? '' : button.dataset.menu; save(); render(); post('loadMenu', { menu: button.dataset.menu }); }
       if (button.dataset.menuRefresh) post('loadMenu', { menu: button.dataset.menuRefresh });
+      if (button.dataset.addContext !== undefined) { menuOpen = ''; save(); render(); post('addContext', { kind: button.dataset.addContext }); }
+      if (button.dataset.removeContext !== undefined) { pinnedContextItems = pinnedContextItems.filter(item => item.id !== button.dataset.removeContext); save(); render(); }
+      if (button.dataset.clearContext !== undefined) { pinnedContextItems = []; save(); render(); }
       if (button.dataset.selectAgent) { selectedAgent = button.dataset.selectAgent; menuOpen = ''; save(); render(); }
       if (button.dataset.clearAgent) { selectedAgent = ''; menuOpen = ''; save(); render(); }
       if (button.dataset.selectModel) { selectedModel = { providerID: button.dataset.providerId, modelID: button.dataset.modelId, name: button.dataset.name || button.dataset.modelId, label: button.dataset.label || button.dataset.name || button.dataset.modelId }; menuOpen = ''; save(); render(); post('setModel', { model: selectedModel }); }

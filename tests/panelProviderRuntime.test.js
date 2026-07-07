@@ -282,7 +282,7 @@ test("panel runtime renders existing session history in the startup top bar", ()
 
   assert.match(harness.appElement.innerHTML, /OpenCode session/)
   assert.match(harness.appElement.innerHTML, /Greeting/)
-  assert.match(harness.appElement.innerHTML, /Recent sessions/)
+  assert.match(harness.appElement.innerHTML, /Sessions/)
 })
 
 test("panel runtime requests a refresh when ready workspace history is empty", () => {
@@ -300,4 +300,44 @@ test("panel runtime requests a refresh when ready workspace history is empty", (
   harness.dispatch({ type: "state", workspaces: [workspace] })
 
   assert.ok(harness.postedMessages.some((message) => message.type === "refreshSessions"), "ready empty history should request refresh")
+})
+
+test("panel runtime renders live and pinned context chips above the prompt", () => {
+  const harness = createPanelHarness()
+  const workspace = {
+    workspaceId: "ws-1",
+    activeSessionId: "ses-1",
+    state: "ready",
+    selectedModel: null,
+    permissions: [],
+    sessions: [],
+  }
+
+  harness.dispatch({ type: "state", workspaces: [workspace] })
+  harness.dispatch({
+    type: "contextState",
+    context: {
+      items: [
+        { id: "live:active-file:file:///workspace/src/app.ts", source: "live", kind: "active-file", priority: "low", title: "app.ts", detail: "Line 1", removable: false, payload: { path: "src/app.ts", uri: "file:///workspace/src/app.ts" } },
+      ],
+      canAddActiveFile: true,
+      canAddSelection: true,
+      canAddFile: true,
+      canAddFolder: true,
+    },
+  })
+  harness.dispatch({
+    type: "contextAdded",
+    items: [
+      { id: "pinned:manual:file:///workspace/README.md", source: "pinned", kind: "file", priority: "very-high", title: "README.md", detail: "md", removable: true, payload: { path: "README.md", uri: "file:///workspace/README.md" } },
+    ],
+  })
+
+  assert.match(harness.appElement.innerHTML, /<div class="context-bar">/)
+  assert.match(harness.appElement.innerHTML, /app\.ts/)
+  assert.match(harness.appElement.innerHTML, /Line 1/)
+  assert.match(harness.appElement.innerHTML, /README\.md/)
+  assert.match(harness.appElement.innerHTML, /data-source="live"/)
+  assert.match(harness.appElement.innerHTML, /data-source="pinned"/)
+  assert.doesNotMatch(harness.appElement.innerHTML, /<div class="context-bar-title">Context<\/div>/)
 })

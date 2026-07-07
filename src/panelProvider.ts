@@ -1,5 +1,6 @@
 import * as vscode from "vscode"
 import { randomBytes } from "node:crypto"
+import { collectEditorContext, collectPinnedFileContexts, collectPinnedFolderContexts, composePromptText, type PromptContextItem } from "./promptContext"
 import { OpenCodeServices } from "./services"
 
 export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -7,6 +8,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
   private readonly changeSub: vscode.Disposable
   private readonly eventSub: vscode.Disposable
   private viewSub?: vscode.Disposable
+  private contextSubs: vscode.Disposable[] = []
   private htmlTemplate?: Thenable<string>
 
   /**
@@ -33,6 +35,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     view.webview.options = { enableScripts: true }
     this.viewSub?.dispose()
     this.viewSub = view.webview.onDidReceiveMessage((msg) => void this.handleMessage(msg))
+    this.resetContextListeners()
     void this.initializeWebview(view.webview)
   }
 
@@ -45,6 +48,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     try {
       webview.html = await this.html(webview)
       this.postState()
+      this.postEditorContext()
       void this.refreshPanelState()
     } catch (err) {
       webview.html = this.errorHtml(err)
@@ -60,6 +64,7 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
     this.changeSub.dispose()
     this.eventSub.dispose()
     this.viewSub?.dispose()
+    this.disposeContextListeners()
   }
 
   /**
@@ -93,6 +98,9 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
         case "pickModel":
           await vscode.commands.executeCommand("opencode.pickModel")
           break
+        case "addContext":
+          await this.handleAddContextMessage(msg)
+          break
         case "abort":
           await vscode.commands.executeCommand("opencode.abort")
           break
@@ -107,14 +115,6 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
           break
         case "copy":
           if (typeof msg.text === "string") await vscode.env.clipboard.writeText(msg.text)
-          break
-        case "sendPrompt":
-          if (typeof msg.prompt === "string" && msg.prompt.trim()) {
-            await this.services.sendPrompt(msg.prompt.trim(), {
-              agent: typeof msg.agent === "string" ? msg.agent : undefined,
-              model: isModelPick(msg.model) ? msg.model : undefined,
-            })
-          }
           break
         case "loadMenu": {
           const rt = await this.services.ensureReady()
@@ -133,15 +133,33 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
           break
         case "ready":
           await this.services.refreshCurrent()
+          this.postEditorContext()
           break
         case "refreshSessions":
           await this.refreshPanelState()
           return
+        case "requestContext":
+          this.postEditorContext()
+          break
+        case "sendPrompt": {
+          if (typeof msg.prompt === "string" && msg.prompt.trim()) {
+            const manualContexts = normalizeContextItems(msg.contextItems)
+            const liveContext = collectEditorContext().items
+            const prompt = composePromptText(msg.prompt, [...manualContexts, ...liveContext])
+            await this.services.sendPrompt(prompt, {
+              agent: typeof msg.agent === "string" ? msg.agent : undefined,
+              model: isModelPick(msg.model) ? msg.model : undefined,
+            })
+          }
+          break
+        }
       }
       this.postState()
+      this.postEditorContext()
     } catch (err) {
       this.postNotice("error", err instanceof Error ? err.message : String(err))
       this.postState()
+      this.postEditorContext()
     }
   }
 
@@ -174,6 +192,70 @@ export class OpenCodePanelProvider implements vscode.WebviewViewProvider, vscode
    */
   private postEvent(workspaceId: string, event: any) {
     void this.view?.webview.postMessage({ type: "event", workspaceId, event })
+  }
+
+  /**
+   * Sends the current live editor context snapshot to the panel webview.
+   * Input: none; context is gathered from the active editor.
+   * Return: void.
+   */
+  private postEditorContext() {
+    const context = collectEditorContext()
+    void this.view?.webview.postMessage({ type: "contextState", context })
+  }
+
+  /**
+   * Hooks VS Code editor events so the webview can keep its live context chips current.
+   * Input: none.
+   * Return: void.
+   */
+  private resetContextListeners() {
+    this.disposeContextListeners()
+    const refresh = () => this.postEditorContext()
+    this.contextSubs = [
+      vscode.window.onDidChangeActiveTextEditor(refresh),
+      vscode.window.onDidChangeTextEditorSelection(refresh),
+      vscode.window.onDidChangeTextEditorVisibleRanges(refresh),
+      vscode.workspace.onDidChangeTextDocument(refresh),
+    ]
+    this.postEditorContext()
+  }
+
+  private disposeContextListeners() {
+    for (const sub of this.contextSubs) sub.dispose()
+    this.contextSubs = []
+  }
+
+  private async handleAddContextMessage(msg: any) {
+    const kind = typeof msg?.kind === "string" ? msg.kind : ""
+    if (kind === "active-file" || kind === "selection") {
+      const context = collectEditorContext()
+      const item = context.items.find((entry) => entry.kind === kind)
+      if (item) {
+        void this.view?.webview.postMessage({ type: "contextAdded", items: [pinContextItem(item)] })
+      } else {
+        this.postNotice("error", kind === "selection" ? "No selection to pin." : "No active file to pin.")
+      }
+      return
+    }
+
+    if (kind === "file") {
+      const picked = await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFolders: false, canSelectFiles: true, openLabel: "Add file context" })
+      if (!picked?.length) return
+      const items = await collectPinnedFileContexts(picked)
+      void this.view?.webview.postMessage({ type: "contextAdded", items: items.map(toWebviewContextItem) })
+      return
+    }
+
+    if (kind === "folder") {
+      const picked = await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFolders: true, canSelectFiles: false, openLabel: "Add folder context" })
+      if (!picked?.length) return
+      const items = await collectPinnedFolderContexts(picked)
+      void this.view?.webview.postMessage({ type: "contextAdded", items: items.map(toWebviewContextItem) })
+      return
+    }
+
+    this.postNotice("error", `Unknown context action: ${kind || "<missing>"}`)
   }
 
   /**
@@ -259,4 +341,28 @@ function isModelPick(value: any): value is { providerID: string; modelID: string
   return typeof value?.providerID === "string"
     && typeof value?.modelID === "string"
     && typeof value?.label === "string"
+}
+
+function normalizeContextItems(value: unknown): PromptContextItem[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return []
+    const candidate = item as PromptContextItem
+    if (typeof candidate.id !== "string" || typeof candidate.kind !== "string" || typeof candidate.priority !== "string" || typeof candidate.title !== "string") return []
+    return [candidate]
+  })
+}
+
+function toWebviewContextItem(item: PromptContextItem) {
+  return { ...item, payload: { ...item.payload } }
+}
+
+function pinContextItem(item: PromptContextItem): PromptContextItem {
+  return {
+    ...item,
+    source: "pinned",
+    priority: "very-high",
+    removable: true,
+    id: `pinned:${item.id}`,
+  }
 }

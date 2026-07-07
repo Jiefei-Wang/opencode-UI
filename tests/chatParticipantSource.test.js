@@ -5,6 +5,9 @@ const test = require("node:test")
 const source = fs.readFileSync("src/chatParticipant.ts", "utf8")
 
 test("chat participant ignores user-role message part events so VS Code Chat does not echo prompts", () => {
+  assert.match(source, /collectEditorContext/)
+  assert.match(source, /collectPromptReferenceContexts/)
+  assert.match(source, /composePromptText/)
   assert.match(source, /const messageRoles = new Map<string, "user" \| "assistant">\(\)/)
   assert.match(source, /event\.type === "message\.updated"/)
   assert.match(source, /messageRoles\.set\(props\.info\.id, props\.info\.role\)/)

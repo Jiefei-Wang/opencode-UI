@@ -58,18 +58,12 @@
     .menu button:hover { background: var(--vscode-list-hoverBackground); }
     .menu .meta { display: block; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .context-bar { display: grid; gap: 6px; margin-bottom: 8px; }
-    .context-bar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
-    .context-bar-title { color: var(--vscode-descriptionForeground); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-    .context-bar-actions { display: flex; gap: 4px; flex: 0 0 auto; }
-    .context-bar-actions button { padding: 3px 7px; color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-panel-border); }
-    .context-list { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+    .context-list { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
     .context-empty { color: var(--vscode-descriptionForeground); font-size: 12px; }
-    .context-chip { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background)); }
+    .context-chip, .context-add { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 4px 8px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background)); }
     .context-chip[data-source="live"] { border-style: dashed; }
-    .context-chip-main { min-width: 0; display: grid; gap: 1px; }
-    .context-chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
-    .context-chip-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 11px; }
-    .context-chip-meta { color: var(--vscode-descriptionForeground); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .context-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+    .context-add { justify-content: center; width: 24px; padding: 4px 0; color: var(--vscode-descriptionForeground); }
     .context-chip button { padding: 0 2px; line-height: 1; color: var(--vscode-descriptionForeground); }
     .composer-wrap { min-width: 0; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border); overflow: hidden; }
     .composer { min-width: 0; max-width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 10px; background: var(--vscode-input-background); overflow: visible; }
@@ -390,19 +384,20 @@
     function renderContextBar() {
       const liveItems = (liveContext?.items || []).filter(Boolean);
       const pinnedItems = pinnedContextItems.filter(Boolean);
+      const addButton = '<button class="context-add" data-menu="context" aria-label="Add context">+</button>';
       if (!liveItems.length && !pinnedItems.length) {
-        return '<div class="context-bar"><div class="context-bar-head"><div class="context-bar-actions"><button data-menu="context">Add</button></div></div><div class="context-empty">No context attached yet.</div></div>';
+        return '<div class="context-bar"><div class="context-list">' + addButton + '</div><div class="context-empty">No context attached yet.</div></div>';
       }
       const items = [...liveItems, ...pinnedItems];
-      const clear = pinnedItems.length ? '<button data-clear-context="true">Clear pinned</button>' : '';
-      return '<div class="context-bar"><div class="context-bar-head"><div class="context-bar-actions"><button data-menu="context">Add</button>' + clear + '</div></div><div class="context-list">' + items.map(renderContextChip).join('') + '</div></div>';
+      return '<div class="context-bar"><div class="context-list">' + addButton + items.map(renderContextChip).join('') + '</div></div>';
     }
     // Meaning: render one context chip for either live editor context or a pinned attachment.
     // Input: context item object.
     // Return: HTML string.
     function renderContextChip(item) {
-      const removable = item.removable ? '<button data-remove-context="' + esc(item.id) + '" aria-label="Remove context">×</button>' : '<span class="context-chip-meta">auto</span>';
-      return '<span class="context-chip" data-source="' + esc(item.source || 'live') + '"><span class="context-chip-main"><span class="context-chip-title">' + esc(item.title || item.kind || 'Context') + '</span>' + (item.detail ? '<span class="context-chip-detail">' + esc(item.detail) + '</span>' : '') + '</span>' + removable + '</span>';
+      const label = item.detail ? (item.title || item.kind || 'Context') + ':' + item.detail : (item.title || item.kind || 'Context');
+      const removable = item.removable ? '<button data-remove-context="' + esc(item.id) + '" aria-label="Remove context">×</button>' : '';
+      return '<span class="context-chip" data-source="' + esc(item.source || 'live') + '"><span class="context-chip-label">' + esc(label) + '</span>' + removable + '</span>';
     }
     // Meaning: choose the label for the model picker button.
     // Input: none; reads selectedModel.

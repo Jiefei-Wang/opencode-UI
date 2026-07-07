@@ -160,7 +160,6 @@ export async function collectFileContext(uri: vscode.Uri, pinned = false): Promi
     kind: "file",
     priority: pinned ? "very-high" : "low",
     title: pathLabel(relativePath),
-    detail: `${document.languageId}${text.length > fileContextMaxChars ? `, truncated to ${chunks.length} chunk${chunks.length === 1 ? "" : "s"}` : ""}`,
     removable: pinned,
     payload: {
       path: relativePath,
@@ -202,7 +201,6 @@ export async function collectFolderContext(uri: vscode.Uri, pinned = false): Pro
     kind: "folder",
     priority: pinned ? "very-high" : "low",
     title: folderName,
-    detail: `${files.length} file${files.length === 1 ? "" : "s"}, ${snippets.length} snippet${snippets.length === 1 ? "" : "s"}`,
     removable: pinned,
     payload: {
       path: workspaceFolder ? workspaceFolder.uri.fsPath : uri.fsPath,
@@ -275,11 +273,11 @@ function formatRange(range: { start?: { line?: number; character?: number }; end
 }
 
 function formatSingleLine(line: number) {
-  return `Line ${line + 1}`
+  return `L${line + 1}`
 }
 
 function formatLineSpan(startLine: number, endLine: number) {
-  return startLine === endLine ? formatSingleLine(startLine) : `Lines ${startLine + 1}-${endLine + 1}`
+  return startLine === endLine ? formatSingleLine(startLine) : `L${startLine + 1}-${endLine + 1}`
 }
 
 function isRangeLike(value: object) {
@@ -311,7 +309,6 @@ async function collectPromptReferenceContext(reference: vscode.ChatPromptReferen
         kind: "reference",
         priority: "very-high",
         title: pathLabel(value.fsPath || value.path || value.toString()),
-        detail: value.toString(),
         removable: false,
         payload: { uri: value.toString(), modelDescription: reference.modelDescription, promptRange: reference.range },
       }

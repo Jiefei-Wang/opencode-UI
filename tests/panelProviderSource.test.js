@@ -75,11 +75,16 @@ test("panel renders and manages live plus pinned context chips", () => {
   assert.match(source, /data-menu="context"/)
   assert.match(source, /data-add-context="file"/)
   assert.match(source, /data-remove-context=/)
-  assert.match(source, /data-clear-context=/)
 })
 
 test("panel context bar omits the title label", () => {
   assert.doesNotMatch(source, /<div class="context-bar-title">Context<\/div>/)
+})
+
+test("panel renders a compact plus-only add button and single-line context chips", () => {
+  assert.match(source, /class="context-add" data-menu="context" aria-label="Add context">\+</)
+  assert.match(source, /const label = item\.detail \? \(item\.title \|\| item\.kind \|\| 'Context'\) \+ ':' \+ item\.detail/)
+  assert.doesNotMatch(source, /context-chip-meta/)
 })
 
 test("panel agent picker mirrors model label and can clear selection", () => {

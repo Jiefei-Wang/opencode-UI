@@ -318,7 +318,7 @@ test("panel runtime renders live and pinned context chips above the prompt", () 
     type: "contextState",
     context: {
       items: [
-        { id: "live:active-file:file:///workspace/src/app.ts", source: "live", kind: "active-file", priority: "low", title: "app.ts", detail: "Line 1", removable: false, payload: { path: "src/app.ts", uri: "file:///workspace/src/app.ts" } },
+        { id: "live:active-file:file:///workspace/src/app.ts", source: "live", kind: "active-file", priority: "low", title: "app.ts", detail: "L1", removable: false, payload: { path: "src/app.ts", uri: "file:///workspace/src/app.ts" } },
       ],
       canAddActiveFile: true,
       canAddSelection: true,
@@ -334,10 +334,11 @@ test("panel runtime renders live and pinned context chips above the prompt", () 
   })
 
   assert.match(harness.appElement.innerHTML, /<div class="context-bar">/)
-  assert.match(harness.appElement.innerHTML, /app\.ts/)
-  assert.match(harness.appElement.innerHTML, /Line 1/)
+  assert.match(harness.appElement.innerHTML, /<button class="context-add" data-menu="context" aria-label="Add context">\+<\/button>/)
+  assert.match(harness.appElement.innerHTML, /app\.ts:L1/)
   assert.match(harness.appElement.innerHTML, /README\.md/)
   assert.match(harness.appElement.innerHTML, /data-source="live"/)
   assert.match(harness.appElement.innerHTML, /data-source="pinned"/)
   assert.doesNotMatch(harness.appElement.innerHTML, /<div class="context-bar-title">Context<\/div>/)
+  assert.doesNotMatch(harness.appElement.innerHTML, />auto</)
 })

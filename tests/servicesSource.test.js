@@ -27,8 +27,16 @@ test("services load models from connected config providers", () => {
 
 test("services snapshot exposes the OpenCode session list loaded for each workspace", () => {
   assert.match(source, /sessions: this\.sessions\.get\(rt\.workspaceId\) \?\? \[\]/)
+  assert.match(source, /messages: this\.messages\.get\(rt\.workspaceId\) \?\? \[\]/)
   assert.match(source, /return list/)
   assert.match(source, /rt\.client\.session\.list\(\{ directory: rt\.dir, roots: true \}\)/)
+})
+
+test("services hydrate transcripts for selected sessions", () => {
+  assert.match(source, /refreshSessionMessages/)
+  assert.match(source, /refreshActiveSessionMessages/)
+  assert.match(source, /sessionMessagesToPanelMessages/)
+  assert.match(source, /rt\.client\.session\.messages/)
 })
 
 test("services log detailed session refresh diagnostics", () => {

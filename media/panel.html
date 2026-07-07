@@ -61,10 +61,11 @@
     .context-list { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
     .context-empty { color: var(--vscode-descriptionForeground); font-size: 12px; }
     .context-chip, .context-add { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 4px 8px; border: 1px solid var(--vscode-panel-border); border-radius: 999px; background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background)); }
+    .context-chip { overflow: hidden; }
     .context-chip[data-source="live"] { border-style: dashed; }
-    .context-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+    .context-chip-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
     .context-add { justify-content: center; width: 24px; padding: 4px 0; color: var(--vscode-descriptionForeground); }
-    .context-chip button { padding: 0 2px; line-height: 1; color: var(--vscode-descriptionForeground); }
+    .context-chip button { flex: 0 0 auto; padding: 0 2px; line-height: 1; color: var(--vscode-descriptionForeground); }
     .composer-wrap { min-width: 0; padding: 8px 10px 10px; border-top: 1px solid var(--vscode-panel-border); overflow: hidden; }
     .composer { min-width: 0; max-width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 10px; background: var(--vscode-input-background); overflow: visible; }
     .composer:focus-within { border-color: var(--vscode-focusBorder); }
@@ -105,6 +106,7 @@
     let sessionListOpen = persisted.sessionListOpen || false;
     let sessionRefreshWorkspaceId = persisted.sessionRefreshWorkspaceId || '';
     let activeSessionId = persisted.activeSessionId || '';
+    let hydratedSessionId = persisted.hydratedSessionId || '';
     let selectedAgent = persisted.selectedAgent || '';
     let selectedModel = persisted.selectedModel || null;
     let userSelected = persisted.userSelected || false;
@@ -167,7 +169,7 @@
     function save() {
       const prompt = document.getElementById('prompt');
       if (prompt) draft = prompt.value;
-      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, selectedAgent, selectedModel, userSelected, pinnedContextItems, liveContext });
+      vscode.setState?.({ workspaces, notice, noticeLevel, draft, menuOpen, sessionListOpen, sessionRefreshWorkspaceId, activeSessionId, hydratedSessionId, selectedAgent, selectedModel, userSelected, pinnedContextItems, liveContext });
     }
     // Meaning: HTML-escape dynamic text before injecting it into markup.
     // Input: any value that should be rendered as text.
@@ -208,8 +210,16 @@
         messageRoles.clear();
         partTypes.clear();
         sessionListOpen = false;
+        hydratedSessionId = '';
       }
       activeSessionId = nextSessionId;
+      const nextMessages = Array.isArray(ws?.messages) ? ws.messages : [];
+      if (nextSessionId && nextMessages.length && (!messages.length || hydratedSessionId !== nextSessionId)) {
+        messages = nextMessages.map(msg => ({ ...msg }));
+        messageRoles.clear();
+        partTypes.clear();
+        hydratedSessionId = nextSessionId;
+      }
     }
     // Meaning: ask the extension host to load sessions once a ready workspace has no sessions in state.
     // Input: current workspace snapshot or undefined.
@@ -388,7 +398,10 @@
       if (!liveItems.length && !pinnedItems.length) {
         return '<div class="context-bar"><div class="context-list">' + addButton + '<span class="context-empty">No context attached yet.</span></div></div>';
       }
-      const items = [...liveItems, ...pinnedItems];
+      const hasSelection = liveItems.some(item => item.kind === 'selection');
+      const visibleLiveItems = hasSelection ? liveItems.filter(item => item.kind !== 'active-file') : liveItems;
+      const pinnedIds = new Set(pinnedItems.map(i => i.id));
+      const items = [...visibleLiveItems.filter(i => !pinnedIds.has(i.id)), ...pinnedItems];
       return '<div class="context-bar"><div class="context-list">' + addButton + items.map(renderContextChip).join('') + '</div></div>';
     }
     // Meaning: render one context chip for either live editor context or a pinned attachment.

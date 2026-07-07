@@ -1,12 +1,20 @@
 import * as vscode from "vscode"
 import { connectedProvidersFromConfig, modelsFromConnectedProviders } from "./modelCatalog"
 import { defaultAgent, defaultModel } from "./settings"
-import type { AgentInfo, CommandInfo, FileDiff, ModelPick, OpenCodeClient, PermissionReply, PermissionRequest, QuestionRequest, SessionEvent, SessionInfo, SkillInfo, Todo } from "./opencodeTypes"
+import type { AgentInfo, CommandInfo, FileDiff, ModelPick, OpenCodeClient, PermissionReply, PermissionRequest, QuestionRequest, SessionEvent, SessionInfo, SessionMessage, SkillInfo, Todo } from "./opencodeTypes"
 import { WorkspaceManager, WorkspaceRuntime } from "./workspaceManager"
+
+type PanelMessage = {
+  role: "user" | "assistant"
+  text: string
+  kind?: string
+  thinking?: string
+}
 
 export class OpenCodeServices implements vscode.Disposable {
   private activeSessions = new Map<string, string>()
   private sessions = new Map<string, SessionInfo[]>()
+  private messages = new Map<string, PanelMessage[]>()
   private todos = new Map<string, Todo[]>()
   private diffs = new Map<string, FileDiff[]>()
   private permissions = new Map<string, PermissionRequest[]>()
@@ -52,6 +60,7 @@ export class OpenCodeServices implements vscode.Disposable {
       url: rt.url,
       activeSessionId: this.activeSessions.get(rt.workspaceId),
       sessions: this.sessions.get(rt.workspaceId) ?? [],
+      messages: this.messages.get(rt.workspaceId) ?? [],
       todos: this.todos.get(rt.workspaceId) ?? [],
       diffs: this.diffs.get(rt.workspaceId) ?? [],
       permissions: this.permissions.get(rt.workspaceId) ?? [],
@@ -84,6 +93,7 @@ export class OpenCodeServices implements vscode.Disposable {
     const picked = await vscode.window.showQuickPick(sessions.map((s) => ({ label: sessionTitle(s), description: s.id, session: s })), { placeHolder: "Resume OpenCode session" })
     if (!picked) return undefined
     this.setActiveSession(runtime.workspaceId, picked.session.id)
+    await this.refreshSessionMessages(runtime, picked.session.id).catch((err) => this.log(`[${runtime.name}] refresh session messages after resume failed: ${text(err)}`))
     this.fire()
     return picked.session
   }
@@ -92,6 +102,7 @@ export class OpenCodeServices implements vscode.Disposable {
     const rt = this.mgr.get(workspaceId)
     if (!rt?.client) throw new Error("OpenCode workspace is not ready")
     this.setActiveSession(workspaceId, sessionID)
+    await this.refreshSessionMessages(rt, sessionID)
     await Promise.all([this.refreshTodos(rt).catch(() => []), this.refreshDiff(rt).catch(() => [])])
     this.fire()
   }
@@ -100,6 +111,7 @@ export class OpenCodeServices implements vscode.Disposable {
     const activeId = this.activeSessions.get(rt.workspaceId) ?? this.context.workspaceState.get<string>(stateKey(rt.workspaceId))
     if (activeId) {
       this.activeSessions.set(rt.workspaceId, activeId)
+      if (!this.messages.has(rt.workspaceId)) await this.refreshSessionMessages(rt, activeId).catch(() => [])
       return { id: activeId } as SessionInfo
     }
     return await this.newSession(rt)
@@ -131,6 +143,7 @@ export class OpenCodeServices implements vscode.Disposable {
     const rt = await this.ensureReady()
     this.log(`[${rt.name}] refreshCurrent dir=${rt.dir} state=${rt.state} url=${rt.url ?? "<none>"}`)
     await this.refreshSessions(rt)
+    await this.refreshActiveSessionMessages(rt)
   }
 
   async abortActive(rt?: WorkspaceRuntime) {
@@ -291,6 +304,12 @@ export class OpenCodeServices implements vscode.Disposable {
     return list
   }
 
+  async refreshActiveSessionMessages(rt: WorkspaceRuntime) {
+    const activeSessionID = this.activeSessions.get(rt.workspaceId) ?? this.context.workspaceState.get<string>(stateKey(rt.workspaceId))
+    if (!activeSessionID) return []
+    return await this.refreshSessionMessages(rt, activeSessionID)
+  }
+
   async checkEnvironment() {
     const folder = vscode.workspace.workspaceFolders?.[0]
     if (!folder) return "No workspace folder is open."
@@ -312,6 +331,15 @@ export class OpenCodeServices implements vscode.Disposable {
   private setActiveSession(workspaceId: string, sessionID: string) {
     this.activeSessions.set(workspaceId, sessionID)
     void this.context.workspaceState.update(stateKey(workspaceId), sessionID)
+  }
+
+  private async refreshSessionMessages(rt: WorkspaceRuntime, sessionID: string) {
+    if (!rt.client) return []
+    const res = await rt.client.session.messages({ sessionID, directory: rt.dir })
+    const list = sessionMessagesToPanelMessages(res.data ?? [])
+    this.messages.set(rt.workspaceId, list)
+    this.fire()
+    return list
   }
 
   private async syncRuntime(rt: WorkspaceRuntime) {
@@ -439,6 +467,17 @@ function normalizePermission(value: any): PermissionRequest {
     patterns: value?.patterns,
     metadata: value?.metadata,
   }
+}
+
+function sessionMessagesToPanelMessages(messages: SessionMessage[]): PanelMessage[] {
+  return messages.map((message) => {
+    const role = message.info?.role === "assistant" ? "assistant" : "user"
+    const text = message.parts.filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n")
+    const thinking = message.parts.filter((part) => part?.type === "reasoning" && typeof part.text === "string").map((part) => part.text).join("\n")
+    const panelMessage: PanelMessage = { role, text }
+    if (thinking) panelMessage.thinking = thinking
+    return panelMessage
+  })
 }
 
 function parseModel(value: string): ModelPick | undefined {

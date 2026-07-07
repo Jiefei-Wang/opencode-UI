@@ -285,6 +285,30 @@ test("panel runtime renders existing session history in the startup top bar", ()
   assert.match(harness.appElement.innerHTML, /Sessions/)
 })
 
+test("panel runtime hydrates the selected session transcript from state", () => {
+  const harness = createPanelHarness()
+  const workspace = {
+    workspaceId: "ws-1",
+    activeSessionId: "ses-1",
+    state: "ready",
+    selectedModel: null,
+    permissions: [],
+    sessions: [
+      { id: "ses-1", title: "OpenCode session", time: { updated: 2 } },
+    ],
+    messages: [
+      { role: "user", text: "How do I fix this?" },
+      { role: "assistant", text: "Check the selected session transcript." },
+    ],
+  }
+
+  harness.dispatch({ type: "state", workspaces: [workspace] })
+
+  assert.match(harness.appElement.innerHTML, /How do I fix this\?/)
+  assert.match(harness.appElement.innerHTML, /Check the selected session transcript\./)
+  assert.match(harness.appElement.innerHTML, /OpenCode session/)
+})
+
 test("panel runtime requests a refresh when ready workspace history is empty", () => {
   const harness = createPanelHarness()
   const workspace = {
@@ -341,4 +365,34 @@ test("panel runtime renders live and pinned context chips above the prompt", () 
   assert.match(harness.appElement.innerHTML, /data-source="pinned"/)
   assert.doesNotMatch(harness.appElement.innerHTML, /<div class="context-bar-title">Context<\/div>/)
   assert.doesNotMatch(harness.appElement.innerHTML, />auto</)
+})
+
+test("panel runtime prefers the selection chip over the active file snapshot", () => {
+  const harness = createPanelHarness()
+  const workspace = {
+    workspaceId: "ws-1",
+    activeSessionId: "ses-1",
+    state: "ready",
+    selectedModel: null,
+    permissions: [],
+    sessions: [],
+  }
+
+  harness.dispatch({ type: "state", workspaces: [workspace] })
+  harness.dispatch({
+    type: "contextState",
+    context: {
+      items: [
+        { id: "live:active-file:file:///workspace/src/app.ts", source: "live", kind: "active-file", priority: "low", title: "app.ts", detail: "L13", removable: false, payload: { path: "src/app.ts", uri: "file:///workspace/src/app.ts" } },
+        { id: "live:selection:file:///workspace/src/app.ts:6:0:12:0", source: "live", kind: "selection", priority: "high", title: "app.ts", detail: "L7-13", removable: false, payload: { path: "src/app.ts", uri: "file:///workspace/src/app.ts" } },
+      ],
+      canAddActiveFile: true,
+      canAddSelection: true,
+      canAddFile: true,
+      canAddFolder: true,
+    },
+  })
+
+  assert.match(harness.appElement.innerHTML, /app\.ts:L7-13/)
+  assert.doesNotMatch(harness.appElement.innerHTML, /app\.ts:L13/)
 })

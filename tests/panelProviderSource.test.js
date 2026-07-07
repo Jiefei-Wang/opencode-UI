@@ -84,6 +84,11 @@ test("panel context bar omits the title label", () => {
 test("panel renders a compact plus-only add button and single-line context chips", () => {
   assert.match(source, /class="context-add" data-menu="context" aria-label="Add context">\+</)
   assert.match(source, /const label = item\.detail \? \(item\.title \|\| item\.kind \|\| 'Context'\) \+ ':' \+ item\.detail/)
+  assert.match(source, /const hasSelection = liveItems\.some\(item => item\.kind === 'selection'\)/)
+  assert.match(source, /const visibleLiveItems = hasSelection \? liveItems\.filter\(item => item\.kind !== 'active-file'\) : liveItems/)
+  assert.match(source, /\.context-chip \{ overflow: hidden; \}/)
+  assert.match(source, /\.context-chip-label \{ flex: 1 1 auto;/)
+  assert.match(source, /\.context-chip button \{ flex: 0 0 auto;/)
   assert.doesNotMatch(source, /context-chip-meta/)
 })
 

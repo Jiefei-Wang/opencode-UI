@@ -386,7 +386,7 @@
       const pinnedItems = pinnedContextItems.filter(Boolean);
       const addButton = '<button class="context-add" data-menu="context" aria-label="Add context">+</button>';
       if (!liveItems.length && !pinnedItems.length) {
-        return '<div class="context-bar"><div class="context-list">' + addButton + '</div><div class="context-empty">No context attached yet.</div></div>';
+        return '<div class="context-bar"><div class="context-list">' + addButton + '<span class="context-empty">No context attached yet.</span></div></div>';
       }
       const items = [...liveItems, ...pinnedItems];
       return '<div class="context-bar"><div class="context-list">' + addButton + items.map(renderContextChip).join('') + '</div></div>';
